@@ -152,10 +152,113 @@ meRouter.post('/avatar', (_req: Request, res: Response) => {
   res.status(501).json({ error: { code: 'NOT_IMPLEMENTED', message: 'Avatar upload coming in Stage 10' } });
 });
 
-meRouter.get('/history', (_req: Request, res: Response) => {
-  res.status(501).json({ error: { code: 'NOT_IMPLEMENTED', message: 'Match history coming in Stage 10' } });
-});
+/**
+ * GET /api/v1/me/history
+ * Match history for the current user
+ */
+meRouter.get(
+  '/history',
+  asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.user!.id;
 
-meRouter.get('/stats', (_req: Request, res: Response) => {
-  res.status(501).json({ error: { code: 'NOT_IMPLEMENTED', message: 'Player stats coming in Stage 10' } });
-});
+    const { rows } = await query<{
+      game_id: string;
+      game_name: string;
+      role: string;
+      outcome: string;
+      survival_seconds: number | null;
+      catches_made: number;
+      was_disqualified: boolean;
+      created_at: Date;
+      winner: string | null;
+      match_duration_seconds: number | null;
+    }>(
+      `SELECT gp.game_id, g.name AS game_name, gp.role, gp.outcome,
+              gp.survival_seconds, gp.catches_made, gp.was_disqualified, gp.created_at,
+              gr.winner, gr.match_duration_seconds
+       FROM game_participations gp
+       JOIN games g ON g.id = gp.game_id
+       LEFT JOIN game_results gr ON gr.game_id = gp.game_id
+       WHERE gp.user_id = $1
+       ORDER BY gp.created_at DESC
+       LIMIT 50`,
+      [userId]
+    );
+
+    res.status(200).json({
+      history: rows.map((r) => ({
+        gameId: r.game_id,
+        gameName: r.game_name,
+        role: r.role,
+        outcome: r.outcome,
+        survivalSeconds: r.survival_seconds,
+        catchesMade: r.catches_made,
+        wasDisqualified: r.was_disqualified,
+        winner: r.winner,
+        matchDurationSeconds: r.match_duration_seconds,
+        playedAt: r.created_at.toISOString(),
+      })),
+    });
+  })
+);
+
+/**
+ * GET /api/v1/me/stats
+ * Aggregated player statistics
+ */
+meRouter.get(
+  '/stats',
+  asyncHandler(async (req: Request, res: Response) => {
+    const userId = req.user!.id;
+
+    const { rows } = await query<{
+      total_games: string;
+      total_wins: string;
+      total_losses: string;
+      total_catches: string;
+      runner_games: string;
+      runner_wins: string;
+      seeker_games: string;
+      seeker_wins: string;
+    }>(
+      `SELECT
+         COUNT(*) AS total_games,
+         COUNT(*) FILTER (WHERE outcome = 'WIN') AS total_wins,
+         COUNT(*) FILTER (WHERE outcome = 'LOSS') AS total_losses,
+         COALESCE(SUM(catches_made), 0) AS total_catches,
+         COUNT(*) FILTER (WHERE role = 'RUNNER') AS runner_games,
+         COUNT(*) FILTER (WHERE role = 'RUNNER' AND outcome = 'WIN') AS runner_wins,
+         COUNT(*) FILTER (WHERE role = 'SEEKER') AS seeker_games,
+         COUNT(*) FILTER (WHERE role = 'SEEKER' AND outcome = 'WIN') AS seeker_wins
+       FROM game_participations
+       WHERE user_id = $1`,
+      [userId]
+    );
+
+    const s = rows[0]!;
+    const totalGames = parseInt(s.total_games, 10);
+    const totalWins = parseInt(s.total_wins, 10);
+    const runnerGames = parseInt(s.runner_games, 10);
+    const runnerWins = parseInt(s.runner_wins, 10);
+    const seekerGames = parseInt(s.seeker_games, 10);
+    const seekerWins = parseInt(s.seeker_wins, 10);
+
+    res.status(200).json({
+      totalGames,
+      wins: totalWins,
+      losses: parseInt(s.total_losses, 10),
+      winRate: totalGames > 0 ? Number(((totalWins / totalGames) * 100).toFixed(1)) : 0,
+      totalCatches: parseInt(s.total_catches, 10),
+      runnerStats: {
+        games: runnerGames,
+        wins: runnerWins,
+        survivalRate: runnerGames > 0 ? Number(((runnerWins / runnerGames) * 100).toFixed(1)) : 0,
+      },
+      seekerStats: {
+        games: seekerGames,
+        wins: seekerWins,
+        catchSuccessRate: seekerGames > 0 ? Number(((seekerWins / seekerGames) * 100).toFixed(1)) : 0,
+      },
+    });
+  })
+);

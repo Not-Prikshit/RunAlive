@@ -247,10 +247,16 @@ export default function LobbyScreen() {
               <View style={styles.playerActions}>
                 {/* Role Badge */}
                 <TouchableOpacity
-                  disabled={!isHost || isPlayerHost}
+                  disabled={!isHost}
                   onPress={() => {
-                    const nextRole =
-                      player.role === PlayerRole.RUNNER ? PlayerRole.SEEKER : PlayerRole.RUNNER;
+                    let nextRole: PlayerRole;
+                    if (player.role === PlayerRole.RUNNER) {
+                      nextRole = PlayerRole.SEEKER;
+                    } else if (player.role === PlayerRole.SEEKER) {
+                      nextRole = isMe ? PlayerRole.HOST : PlayerRole.RUNNER;
+                    } else {
+                      nextRole = PlayerRole.RUNNER;
+                    }
                     void handleAssignRole(player.userId, nextRole);
                   }}
                   style={[
