@@ -9,10 +9,15 @@ import {
   TeamAssignSchema,
   KickPlayerSchema,
   RandomizeTeamsSchema,
+  LocationBatchSchema,
+  SubmitCatchSchema,
 } from '@runalive/shared';
 import { requireAuth } from '../auth/auth.middleware.js';
 import * as gamesService from './games.service.js';
 import * as engineService from './engine.service.js';
+import * as locationsService from '../locations/locations.service.js';
+import * as boundaryService from '../boundary/boundary.service.js';
+import * as catchesService from '../catches/catches.service.js';
 
 export const gamesRouter = Router();
 
@@ -239,13 +244,128 @@ const notImplemented = (_req: Request, res: Response) => {
 
 gamesRouter.patch('/:id/config', notImplemented);
 gamesRouter.put('/:id/rounds', notImplemented);
-gamesRouter.post('/:id/location', notImplemented);
-gamesRouter.post('/:id/catches', notImplemented);
-gamesRouter.post('/:id/catches/:cid/confirm', notImplemented);
-gamesRouter.post('/:id/catches/:cid/reject', notImplemented);
-gamesRouter.post('/:id/catches/:cid/dispute', notImplemented);
-gamesRouter.post('/:id/catches/:cid/reverse', notImplemented);
-gamesRouter.get('/:id/disqualifications', notImplemented);
-gamesRouter.post('/:id/disqualifications/:did/reverse', notImplemented);
+/**
+ * POST /api/v1/games/:id/location
+ * Ingest location fix batch from active player
+ */
+gamesRouter.post(
+  '/:id/location',
+  asyncHandler(async (req: Request, res: Response) => {
+    const batch = LocationBatchSchema.parse(req.body);
+    const result = await locationsService.recordLocationBatch(req.user!.id, param(req, 'id'), batch);
+    res.status(200).json(result);
+  })
+);
+/**
+ * POST /api/v1/games/:id/catches
+ * Seeker submits catch report with idempotency key
+ */
+gamesRouter.post(
+  '/:id/catches',
+  asyncHandler(async (req: Request, res: Response) => {
+    const input = SubmitCatchSchema.parse(req.body);
+    const report = await catchesService.submitCatch(req.user!.id, param(req, 'id'), input);
+    res.status(201).json(report);
+  })
+);
+
+/**
+ * GET /api/v1/games/:id/catches
+ * List all catch reports for a game
+ */
+gamesRouter.get(
+  '/:id/catches',
+  asyncHandler(async (req: Request, res: Response) => {
+    const reports = await catchesService.getGameCatches(param(req, 'id'));
+    res.status(200).json({ catches: reports });
+  })
+);
+
+/**
+ * POST /api/v1/games/:id/catches/:cid/confirm
+ * Confirm catch report (Runner or Host depending on catchVerificationMode)
+ */
+gamesRouter.post(
+  '/:id/catches/:cid/confirm',
+  asyncHandler(async (req: Request, res: Response) => {
+    const report = await catchesService.confirmCatch(req.user!.id, param(req, 'id'), param(req, 'cid'));
+    res.status(200).json(report);
+  })
+);
+
+/**
+ * POST /api/v1/games/:id/catches/:cid/reject
+ * Reject catch report (Runner or Host)
+ */
+gamesRouter.post(
+  '/:id/catches/:cid/reject',
+  asyncHandler(async (req: Request, res: Response) => {
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason : undefined;
+    const report = await catchesService.rejectCatch(req.user!.id, param(req, 'id'), param(req, 'cid'), reason);
+    res.status(200).json(report);
+  })
+);
+
+/**
+ * POST /api/v1/games/:id/catches/:cid/dispute
+ * Dispute catch report (Runner)
+ */
+gamesRouter.post(
+  '/:id/catches/:cid/dispute',
+  asyncHandler(async (req: Request, res: Response) => {
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason : undefined;
+    const report = await catchesService.disputeCatch(req.user!.id, param(req, 'id'), param(req, 'cid'), reason);
+    res.status(200).json(report);
+  })
+);
+
+/**
+ * POST /api/v1/games/:id/catches/:cid/reverse
+ * Host reverses a confirmed catch
+ */
+gamesRouter.post(
+  '/:id/catches/:cid/reverse',
+  asyncHandler(async (req: Request, res: Response) => {
+    const report = await catchesService.reverseCatch(req.user!.id, param(req, 'id'), param(req, 'cid'));
+    res.status(200).json(report);
+  })
+);
+/**
+ * GET /api/v1/games/:id/disqualifications
+ * List match disqualifications
+ */
+gamesRouter.get(
+  '/:id/disqualifications',
+  asyncHandler(async (req: Request, res: Response) => {
+    const list = await boundaryService.getGameDisqualifications(param(req, 'id'));
+    res.status(200).json({ disqualifications: list });
+  })
+);
+
+/**
+ * POST /api/v1/games/:id/disqualifications/:did/reverse
+ * Host reverses a boundary disqualification
+ */
+gamesRouter.post(
+  '/:id/disqualifications/:did/reverse',
+  asyncHandler(async (req: Request, res: Response) => {
+    await boundaryService.reverseDisqualification(
+      req.user!.id,
+      param(req, 'id'),
+      param(req, 'did')
+    );
+    res.status(200).json({ success: true });
+  })
+);
 gamesRouter.get('/:id/host-overview', notImplemented);
-gamesRouter.get('/:id/results', notImplemented);
+/**
+ * GET /api/v1/games/:id/results
+ * Fetch final match results & participations
+ */
+gamesRouter.get(
+  '/:id/results',
+  asyncHandler(async (req: Request, res: Response) => {
+    const results = await engineService.getGameResults(param(req, 'id'));
+    res.status(200).json(results);
+  })
+);

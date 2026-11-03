@@ -3,7 +3,7 @@
 
 import type pg from 'pg';
 import { v4 as uuidv4 } from 'uuid';
-import { pool, withTransaction } from '../db/pool.js';
+import { query, withTransaction } from '../db/pool.js';
 import { logger } from '../logger.js';
 import { JobType } from '@runalive/shared';
 
@@ -47,8 +47,8 @@ export async function scheduleJob(
   const dedupeKey = options.dedupeKey ?? `${type}:${options.gameId ?? 'global'}:${uuidv4()}`;
   const payload = JSON.stringify(options.payload ?? {});
 
-  const runner = options.client ?? pool;
-  const { rows } = await runner.query<{ id: string }>(
+  const runQuery = options.client ? options.client.query.bind(options.client) : query;
+  const { rows } = await runQuery<{ id: string }>(
     `INSERT INTO scheduled_jobs (type, game_id, payload, dedupe_key, due_at)
      VALUES ($1, $2, $3::jsonb, $4, $5)
      ON CONFLICT (dedupe_key) DO UPDATE
@@ -71,8 +71,8 @@ export async function shiftGameJobDeadlines(
   deltaMs: number,
   client?: pg.PoolClient
 ): Promise<void> {
-  const runner = client ?? pool;
-  await runner.query(
+  const runQuery = client ? (t: string, v?: unknown[]) => client.query(t, v) : query;
+  await runQuery(
     `UPDATE scheduled_jobs
      SET due_at = due_at + ($1 || ' milliseconds')::INTERVAL
      WHERE game_id = $2
@@ -86,8 +86,8 @@ export async function shiftGameJobDeadlines(
  * Cancel / complete all pending jobs for a finished or cancelled game.
  */
 export async function cancelGameJobs(gameId: string, client?: pg.PoolClient): Promise<void> {
-  const runner = client ?? pool;
-  await runner.query(
+  const runQuery = client ? (t: string, v?: unknown[]) => client.query(t, v) : query;
+  await runQuery(
     `UPDATE scheduled_jobs
      SET completed_at = NOW()
      WHERE game_id = $1

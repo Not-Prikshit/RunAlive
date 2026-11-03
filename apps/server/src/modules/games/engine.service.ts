@@ -12,6 +12,8 @@ import {
   type GamePausedPayload,
   type GameResumedPayload,
   type GameRound,
+  type GameResult,
+  type ParticipationRecord,
 } from '@runalive/shared';
 import { query, withTransaction } from '../../db/pool.js';
 import { AppError } from '../../app.js';
@@ -303,7 +305,7 @@ export async function emergencyPause(
 }
 
 /**
- * Terminate/Finish a game.
+ * Terminate/Finish a game and persist match results & player participations.
  */
 export async function endGame(
   gameId: string,
@@ -313,6 +315,39 @@ export async function endGame(
   const now = new Date();
 
   await withTransaction(async (client) => {
+    const { rows: gRows } = await client.query<{
+      started_at: Date | null;
+      current_round: number;
+      total_paused_ms: number;
+    }>(
+      'SELECT started_at, current_round, total_paused_ms FROM games WHERE id = $1',
+      [gameId]
+    );
+    const game = gRows[0];
+    const startedAt = game?.started_at ? new Date(game.started_at) : now;
+    const totalPausedMs = game?.total_paused_ms ?? 0;
+    const matchDurationSec = Math.max(0, Math.round((now.getTime() - startedAt.getTime() - totalPausedMs) / 1000));
+    const roundsCompleted = game?.current_round ?? 1;
+
+    // Count runner stats
+    const { rows: statsRows } = await client.query<{
+      caught: string;
+      disqualified: string;
+      remaining: string;
+    }>(
+      `SELECT
+         COUNT(*) FILTER (WHERE role = 'RUNNER' AND status = 'CAUGHT') AS caught,
+         COUNT(*) FILTER (WHERE role = 'RUNNER' AND status = 'DISQUALIFIED') AS disqualified,
+         COUNT(*) FILTER (WHERE role = 'RUNNER' AND status = 'ACTIVE') AS remaining
+       FROM game_players
+       WHERE game_id = $1`,
+      [gameId]
+    );
+
+    const runnersCaught = parseInt(statsRows[0]?.caught ?? '0', 10);
+    const runnersDisqualified = parseInt(statsRows[0]?.disqualified ?? '0', 10);
+    const runnersRemaining = parseInt(statsRows[0]?.remaining ?? '0', 10);
+
     await client.query(
       `UPDATE games
        SET status = 'FINISHED',
@@ -321,6 +356,77 @@ export async function endGame(
        WHERE id = $2`,
       [now, gameId]
     );
+
+    // Insert or update game_results
+    await client.query(
+      `INSERT INTO game_results (
+         game_id, winner, match_duration_seconds, rounds_completed,
+         runners_caught, runners_disqualified, runners_remaining, finished_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       ON CONFLICT (game_id) DO UPDATE
+         SET winner = EXCLUDED.winner,
+             match_duration_seconds = EXCLUDED.match_duration_seconds,
+             rounds_completed = EXCLUDED.rounds_completed,
+             runners_caught = EXCLUDED.runners_caught,
+             runners_disqualified = EXCLUDED.runners_disqualified,
+             runners_remaining = EXCLUDED.runners_remaining,
+             finished_at = EXCLUDED.finished_at`,
+      [
+        gameId,
+        winner,
+        matchDurationSec,
+        roundsCompleted,
+        runnersCaught,
+        runnersDisqualified,
+        runnersRemaining,
+        now,
+      ]
+    );
+
+    // Insert game_participations for each player
+    const { rows: playerRows } = await client.query<{
+      user_id: string;
+      role: PlayerRole;
+      status: PlayerStatus;
+    }>(
+      `SELECT user_id, role, status
+       FROM game_players
+       WHERE game_id = $1 AND status NOT IN ('LEFT', 'KICKED')`,
+      [gameId]
+    );
+
+    for (const p of playerRows) {
+      let outcome: 'WIN' | 'LOSS' | 'DRAW' = 'DRAW';
+      if (winner === GameWinner.RUNNERS) {
+        outcome = p.role === PlayerRole.RUNNER && p.status !== PlayerStatus.DISQUALIFIED ? 'WIN' : 'LOSS';
+      } else if (winner === GameWinner.SEEKERS) {
+        outcome = p.role === PlayerRole.SEEKER ? 'WIN' : 'LOSS';
+      }
+
+      // Count catches made by this player
+      const { rows: catchCountRows } = await client.query<{ count: string }>(
+        `SELECT COUNT(*) FROM catch_reports
+         WHERE game_id = $1 AND seeker_user_id = $2 AND status = 'CONFIRMED'`,
+        [gameId, p.user_id]
+      );
+      const catchesMade = parseInt(catchCountRows[0]?.count ?? '0', 10);
+
+      await client.query(
+        `INSERT INTO game_participations (
+           game_id, user_id, role, outcome, survival_seconds, catches_made, was_disqualified, created_at
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+         ON CONFLICT DO NOTHING`,
+        [
+          gameId,
+          p.user_id,
+          p.role,
+          outcome,
+          p.role === PlayerRole.RUNNER ? matchDurationSec : null,
+          catchesMade,
+          p.status === PlayerStatus.DISQUALIFIED,
+        ]
+      );
+    }
 
     await cancelGameJobs(gameId, client);
   });
@@ -331,6 +437,74 @@ export async function endGame(
     reason,
     finishedAt: now.toISOString(),
   });
+}
+
+/**
+ * Fetch results and participations for a finished game.
+ */
+export async function getGameResults(
+  gameId: string
+): Promise<GameResult & { participations: ParticipationRecord[] }> {
+  const { rows: resultRows } = await query<{
+    game_id: string;
+    winner: GameWinner;
+    match_duration_seconds: number;
+    rounds_completed: number;
+    runners_caught: number;
+    runners_disqualified: number;
+    runners_remaining: number;
+    finished_at: Date;
+  }>(
+    `SELECT game_id, winner, match_duration_seconds, rounds_completed,
+            runners_caught, runners_disqualified, runners_remaining, finished_at
+     FROM game_results
+     WHERE game_id = $1`,
+    [gameId]
+  );
+
+  const res = resultRows[0];
+  if (!res) {
+    throw new AppError('RESULTS_NOT_FOUND', 'Match results not found or game is not finished', 404);
+  }
+
+  const { rows: partRows } = await query<{
+    game_id: string;
+    game_name: string;
+    role: PlayerRole;
+    outcome: 'WIN' | 'LOSS' | 'DRAW';
+    survival_seconds: number | null;
+    catches_made: number;
+    was_disqualified: boolean;
+    created_at: Date;
+  }>(
+    `SELECT gp.game_id, g.name AS game_name, gp.role, gp.outcome,
+            gp.survival_seconds, gp.catches_made, gp.was_disqualified, gp.created_at
+     FROM game_participations gp
+     JOIN games g ON g.id = gp.game_id
+     WHERE gp.game_id = $1`,
+    [gameId]
+  );
+
+  return {
+    gameId: res.game_id,
+    winner: res.winner,
+    matchDurationSeconds: res.match_duration_seconds,
+    roundsCompleted: res.rounds_completed,
+    runnersCaught: res.runners_caught,
+    runnersDisqualified: res.runners_disqualified,
+    runnersRemaining: res.runners_remaining,
+    finishedAt: new Date(res.finished_at).toISOString(),
+    participations: partRows.map((p) => ({
+      gameId: p.game_id,
+      gameName: p.game_name,
+      role: p.role,
+      outcome: p.outcome,
+      survivalSeconds: p.survival_seconds,
+      catchesMade: p.catches_made,
+      wasDisqualified: p.was_disqualified,
+      playedAt: new Date(p.created_at).toISOString(),
+    })),
+  };
 }
 
 /**
