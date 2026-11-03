@@ -13,7 +13,7 @@ export interface AuthenticatedSocket extends Socket {
   displayName: string;
 }
 
-export let io: SocketServer;
+export let io: SocketServer | undefined;
 
 export function createSocketServer(httpServer: HttpServer): SocketServer {
   io = new SocketServer(httpServer, {
@@ -100,4 +100,28 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
   });
 
   return io;
+}
+
+export function emitToGame<T>(gameId: string, event: string, data: T): void {
+  if (io) {
+    io.to(`game:${gameId}`).emit(event, data);
+  }
+}
+
+export function emitToRunners<T>(gameId: string, event: string, data: T): void {
+  if (io) {
+    io.to(`game:${gameId}:runners`).emit(event, data);
+  }
+}
+
+export function emitToSeekers<T>(gameId: string, event: string, data: T): void {
+  if (io) {
+    io.to(`game:${gameId}:seekers`).emit(event, data);
+  }
+}
+
+export function emitToUser<T>(userId: string, event: string, data: T): void {
+  if (io) {
+    io.to(`user:${userId}`).emit(event, data);
+  }
 }

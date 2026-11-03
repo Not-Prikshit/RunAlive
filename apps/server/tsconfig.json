@@ -10,7 +10,7 @@
     "declaration": false,
     "declarationMap": false,
     "paths": {
-      "@runalive/shared": ["../../packages/shared/src/index.ts"]
+      "@runalive/shared": ["../../packages/shared/dist/index.d.ts"]
     }
   },
   "include": ["src"],

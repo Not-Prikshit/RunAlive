@@ -7,16 +7,18 @@ import {
   StyleSheet,
   type TextInputProps,
   type ViewStyle,
+  type TextStyle,
 } from 'react-native';
 import { COLORS, RADIUS, SPACING, TOUCH_TARGET } from '@/design/tokens';
 
-interface InputProps extends TextInputProps {
+interface InputProps extends Omit<TextInputProps, 'style'> {
   label?: string;
   error?: string;
   style?: ViewStyle;
+  inputStyle?: TextStyle;
 }
 
-export function Input({ label, error, style, ...props }: InputProps) {
+export function Input({ label, error, style, inputStyle, ...props }: InputProps) {
   const [focused, setFocused] = useState(false);
 
   return (
@@ -24,7 +26,7 @@ export function Input({ label, error, style, ...props }: InputProps) {
       {label ? <Text style={styles.label}>{label}</Text> : null}
       <TextInput
         {...props}
-        style={[styles.input, focused && styles.inputFocused, error ? styles.inputError : null]}
+        style={[styles.input, focused && styles.inputFocused, error ? styles.inputError : null, inputStyle]}
         placeholderTextColor={COLORS.textMuted}
         onFocus={(e) => {
           setFocused(true);
@@ -52,15 +54,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   input: {
+    height: TOUCH_TARGET,
     backgroundColor: COLORS.surface,
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
     color: COLORS.text,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
     fontSize: 16,
-    minHeight: TOUCH_TARGET,
   },
   inputFocused: {
     borderColor: COLORS.accent,
@@ -69,8 +70,8 @@ const styles = StyleSheet.create({
     borderColor: COLORS.danger,
   },
   error: {
-    fontSize: 12,
     color: COLORS.danger,
+    fontSize: 12,
     marginTop: SPACING.xs,
   },
 });
