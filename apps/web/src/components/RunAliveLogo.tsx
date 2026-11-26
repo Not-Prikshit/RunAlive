@@ -1,4 +1,5 @@
 import React from 'react';
+import logoUrl from '../assets/runalive_logo.png';
 
 interface RunAliveLogoProps {
   className?: string;
@@ -26,7 +27,7 @@ export const RunAliveLogo: React.FC<RunAliveLogoProps> = React.memo(({
       {/* Clean Runner Character (runalive_logo.png) - No Enclosing Box Container */}
       <div className="relative shrink-0 flex items-center justify-center transition-transform duration-200 group-hover:scale-105 group-hover:-rotate-2 active:translate-x-0.5 active:translate-y-0.5">
         <img
-          src="/runalive_logo.png"
+          src={logoUrl}
           alt="RunAlive Runner"
           className={`${dimensions.img} object-contain transition-transform duration-200 drop-shadow-sm`}
         />

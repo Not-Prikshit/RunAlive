@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import logoUrl from '../assets/runalive_logo.png';
 import { RunAliveLogo } from './RunAliveLogo';
 import { useAuthStore } from '../stores/authStore';
 import { API_URL } from '../lib/api';
@@ -157,7 +158,7 @@ export const ProductionLoader: React.FC<ProductionLoaderProps> = ({ onReady }) =
       await advanceStage('PREPARING_ASSETS', 150);
       await new Promise<void>((resolve) => {
         const logoImg = new Image();
-        logoImg.src = '/runalive_logo.png';
+        logoImg.src = logoUrl;
         if (logoImg.complete) {
           resolve();
         } else {
