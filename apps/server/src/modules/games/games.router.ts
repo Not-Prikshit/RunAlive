@@ -124,7 +124,30 @@ gamesRouter.post(
     const input = CreateGameSchema.parse(createInput);
     try {
       const game = await gamesService.createGame(req.user!.id, input);
-      res.status(201).json({ ...game, game, gameId: game.id });
+      const shape = (body.shape || body.boundaryShape || 'CIRCLE') as 'CIRCLE' | 'RECTANGLE' | 'POLYGON';
+      const rectWidthMeters = Number(body.rectWidth ?? body.rectWidthMeters ?? 600);
+      const rectHeightMeters = Number(body.rectHeight ?? body.rectHeightMeters ?? 600);
+      const rectRotationDeg = Number(body.rectRotation ?? body.rectRotationDeg ?? 0);
+      const polygonPoints = Array.isArray(body.polygonPoints) ? body.polygonPoints : [];
+
+      gamesService.setGamePerimeter(game.id, {
+        shape,
+        rectWidthMeters,
+        rectHeightMeters,
+        rectRotationDeg,
+        polygonPoints,
+      });
+
+      res.status(201).json({
+        ...game,
+        game,
+        gameId: game.id,
+        boundaryShape: shape,
+        rectWidthMeters,
+        rectHeightMeters,
+        rectRotationDeg,
+        polygonPoints,
+      });
     } catch (err: any) {
       if (
         config.NODE_ENV !== 'production' &&
@@ -537,6 +560,28 @@ gamesRouter.post(
     const reason = typeof req.body?.reason === 'string' ? req.body.reason : undefined;
     await engineService.emergencyPause(req.user!.id, param(req, 'id'), reason);
     res.status(200).json({ success: true });
+  })
+);
+
+gamesRouter.put(
+  '/:id/perimeter',
+  asyncHandler(async (req: Request, res: Response) => {
+    const gameId = param(req, 'id');
+    const body = req.body || {};
+    const shape = (body.shape || body.boundaryShape || 'CIRCLE') as 'CIRCLE' | 'RECTANGLE' | 'POLYGON';
+    const rectWidthMeters = Number(body.rectWidth ?? body.rectWidthMeters ?? 600);
+    const rectHeightMeters = Number(body.rectHeight ?? body.rectHeightMeters ?? 600);
+    const rectRotationDeg = Number(body.rectRotation ?? body.rectRotationDeg ?? 0);
+    const polygonPoints = Array.isArray(body.polygonPoints) ? body.polygonPoints : [];
+
+    gamesService.setGamePerimeter(gameId, {
+      shape,
+      rectWidthMeters,
+      rectHeightMeters,
+      rectRotationDeg,
+      polygonPoints,
+    });
+    res.status(200).json({ success: true, shape, rectWidthMeters, rectHeightMeters, rectRotationDeg, polygonPoints });
   })
 );
 

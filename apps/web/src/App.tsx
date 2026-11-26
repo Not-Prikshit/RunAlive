@@ -43,6 +43,16 @@ export function App() {
 
   const [currentView, setCurrentView] = useState<ViewMode>('terminal');
   const [activeGameId, setActiveGameId] = useState<string | null>(null);
+  const [matchPerimeter, setMatchPerimeter] = useState<{
+    lat: number;
+    lng: number;
+    radius: number;
+    shape: PerimeterShape;
+    rectWidth?: number;
+    rectHeight?: number;
+    rectRotation?: number;
+    polygonPoints?: Array<[number, number]>;
+  } | null>(null);
   const [isJournalOpen, setIsJournalOpen] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       return !localStorage.getItem('runalive_journal_completed');
@@ -66,7 +76,7 @@ export function App() {
 
   const handleJoinGame = (gameId: string) => {
     setActiveGameId(gameId);
-    setCurrentView('lobby');
+    setCurrentView('game');
   };
 
   const handleConfirmPerimeter = (params: {
@@ -76,11 +86,42 @@ export function App() {
     radius: number;
     rounds: number;
     shape: PerimeterShape;
+    rectWidth?: number;
+    rectHeight?: number;
+    rectRotation?: number;
     polygonPoints?: Array<[number, number]>;
   }) => {
     setActiveGameId(params.gameId);
+    setMatchPerimeter({
+      lat: params.lat,
+      lng: params.lng,
+      radius: params.radius,
+      shape: params.shape,
+      rectWidth: params.rectWidth,
+      rectHeight: params.rectHeight,
+      rectRotation: params.rectRotation,
+      polygonPoints: params.polygonPoints,
+    });
     setCurrentView('lobby');
   };
+
+  // Dedicated Immersive Match Mode: locks player strictly into the game map canvas
+  if (currentView === 'game' && activeGameId) {
+    return (
+      <div className="fixed inset-0 z-50 bg-[#F8FAFC] dark:bg-[#0F172A] overflow-hidden flex flex-col font-sans select-none">
+        <Suspense fallback={<ViewSuspenseFallback />}>
+          <GameView
+            gameId={activeGameId}
+            perimeterConfig={matchPerimeter}
+            onExit={() => {
+              setActiveGameId(null);
+              setCurrentView('terminal');
+            }}
+          />
+        </Suspense>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen text-[#0F172A] dark:text-[#F8FAFC] flex flex-col font-sans selection:bg-[#FBBC04] selection:text-[#0F172A] pb-16 sm:pb-0 overflow-x-hidden relative">
@@ -171,16 +212,6 @@ export function App() {
               isHost={true}
               onStartMatch={() => setCurrentView('game')}
               onOpenTacticalMap={() => setCurrentView('map-room')}
-              onExit={() => {
-                setActiveGameId(null);
-                setCurrentView('terminal');
-              }}
-            />
-          )}
-
-          {currentView === 'game' && activeGameId && (
-            <GameView
-              gameId={activeGameId}
               onExit={() => {
                 setActiveGameId(null);
                 setCurrentView('terminal');

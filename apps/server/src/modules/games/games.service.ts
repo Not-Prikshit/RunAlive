@@ -74,6 +74,32 @@ export interface GameDetails {
   createdAt: string;
   players: PlayerSummary[];
   rounds: GameRoundInput[];
+  boundaryCenterLat?: number;
+  boundaryCenterLng?: number;
+  boundaryRadiusMeters?: number;
+  boundaryShape?: string;
+  rectWidthMeters?: number;
+  rectHeightMeters?: number;
+  rectRotationDeg?: number;
+  polygonPoints?: Array<[number, number]>;
+}
+
+export interface GamePerimeterConfig {
+  shape: 'CIRCLE' | 'RECTANGLE' | 'POLYGON';
+  rectWidthMeters?: number;
+  rectHeightMeters?: number;
+  rectRotationDeg?: number;
+  polygonPoints?: Array<[number, number]>;
+}
+
+export const gamePerimeters = new Map<string, GamePerimeterConfig>();
+
+export function setGamePerimeter(gameId: string, config: GamePerimeterConfig): void {
+  gamePerimeters.set(gameId, config);
+}
+
+export function getGamePerimeter(gameId: string): GamePerimeterConfig | undefined {
+  return gamePerimeters.get(gameId);
 }
 
 /**
@@ -89,11 +115,18 @@ export async function getGamePlayers(gameId: string): Promise<PlayerSummary[]> {
     is_ready: boolean;
     connected: boolean;
     last_seen_at: Date | null;
+    lat: string | null;
+    lon: string | null;
+    accuracy_m: string | null;
   }>(
     `SELECT gp.user_id, u.display_name, u.avatar_url, gp.role, gp.status,
-            gp.is_ready, gp.connected, gp.last_seen_at
+            gp.is_ready, gp.connected, gp.last_seen_at,
+            ST_Y(pll.location::geometry) as lat,
+            ST_X(pll.location::geometry) as lon,
+            pll.accuracy_m
      FROM game_players gp
      JOIN users u ON u.id = gp.user_id
+     LEFT JOIN player_latest_locations pll ON pll.game_id = gp.game_id AND pll.user_id = gp.user_id
      WHERE gp.game_id = $1 AND gp.status NOT IN ('LEFT', 'KICKED')
      ORDER BY gp.joined_at ASC`,
     [gameId]
@@ -108,6 +141,9 @@ export async function getGamePlayers(gameId: string): Promise<PlayerSummary[]> {
     isReady: r.is_ready,
     isConnected: r.connected,
     lastSeenAt: r.last_seen_at ? r.last_seen_at.toISOString() : null,
+    lat: r.lat ? parseFloat(r.lat) : undefined,
+    lon: r.lon ? parseFloat(r.lon) : undefined,
+    accuracyM: r.accuracy_m ? parseFloat(r.accuracy_m) : undefined,
   }));
 }
 
@@ -397,6 +433,14 @@ export async function getGameById(gameId: string): Promise<GameDetails> {
       centerLon: Number(r.center_lon),
       radiusM: Number(r.radius_m),
     })),
+    boundaryCenterLat: roundRows[0] ? Number(roundRows[0].center_lat) : 28.4595,
+    boundaryCenterLng: roundRows[0] ? Number(roundRows[0].center_lon) : 77.5135,
+    boundaryRadiusMeters: roundRows[0] ? Number(roundRows[0].radius_m) : 500,
+    boundaryShape: gamePerimeters.get(game.id)?.shape || 'CIRCLE',
+    rectWidthMeters: gamePerimeters.get(game.id)?.rectWidthMeters || 600,
+    rectHeightMeters: gamePerimeters.get(game.id)?.rectHeightMeters || 600,
+    rectRotationDeg: gamePerimeters.get(game.id)?.rectRotationDeg || 0,
+    polygonPoints: gamePerimeters.get(game.id)?.polygonPoints || [],
   };
 }
 

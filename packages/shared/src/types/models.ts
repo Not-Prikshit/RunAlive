@@ -62,6 +62,9 @@ export interface PlayerSummary {
   isReady: boolean;
   isConnected: boolean;
   lastSeenAt: string | null;
+  lat?: number | undefined;
+  lon?: number | undefined;
+  accuracyM?: number | undefined;
 }
 
 export interface GameStateSummary {

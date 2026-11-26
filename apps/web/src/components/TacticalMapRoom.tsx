@@ -36,6 +36,9 @@ interface TacticalMapRoomProps {
     radius: number;
     rounds: number;
     shape: PerimeterShape;
+    rectWidth?: number;
+    rectHeight?: number;
+    rectRotation?: number;
     polygonPoints?: Array<[number, number]>;
   }) => void;
 }
@@ -141,8 +144,21 @@ export const TacticalMapRoom: React.FC<TacticalMapRoomProps> = React.memo(({
           totalRounds: totalRounds,
           roundDurationMinutes: roundDurationMinutes,
           maxPlayers: maxPlayers,
+          shape,
+          rectWidth,
+          rectHeight,
+          rectRotation,
+          polygonPoints: shape === 'POLYGON' ? polygonPoints : undefined,
         });
         createdGameId = res.game?.id || res.id || res.gameId;
+      } else {
+        await api.put(`/games/${createdGameId}/perimeter`, {
+          shape,
+          rectWidth,
+          rectHeight,
+          rectRotation,
+          polygonPoints: shape === 'POLYGON' ? polygonPoints : undefined,
+        }).catch(() => {});
       }
 
       if (!createdGameId) {
@@ -156,6 +172,9 @@ export const TacticalMapRoom: React.FC<TacticalMapRoomProps> = React.memo(({
         radius: radiusMeters,
         rounds: totalRounds,
         shape,
+        rectWidth,
+        rectHeight,
+        rectRotation,
         polygonPoints: shape === 'POLYGON' ? polygonPoints : undefined,
       });
     } catch (err: any) {

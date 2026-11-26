@@ -96,6 +96,31 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
       }
     });
 
+    // game:join handler
+    socket.on('game:join', async (payload: { gameId: string }, ack) => {
+      try {
+        const gameId = payload?.gameId;
+        if (!gameId) return;
+        void socket.join(`game:${gameId}`);
+
+        const { rows } = await query<{ role: string }>(
+          `SELECT role FROM game_players WHERE user_id = $1 AND game_id = $2`,
+          [s.userId, gameId]
+        );
+        if (rows[0]?.role === 'RUNNER') void socket.join(`game:${gameId}:runners`);
+        if (rows[0]?.role === 'SEEKER') void socket.join(`game:${gameId}:seekers`);
+
+        await query(
+          `UPDATE game_players SET connected = true, last_seen_at = NOW() WHERE user_id = $1 AND game_id = $2`,
+          [s.userId, gameId]
+        );
+        typeof ack === 'function' && ack({ ok: true, role: rows[0]?.role });
+      } catch (err) {
+        logger.error({ err, userId: s.userId }, 'Error in game:join');
+        typeof ack === 'function' && ack({ ok: false });
+      }
+    });
+
     // game:sync handler
     socket.on('game:sync', async (_payload: { knownStateVersion: number; gameId: string }, ack) => {
       try {

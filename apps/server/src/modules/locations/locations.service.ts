@@ -180,6 +180,16 @@ export async function recordLocationBatch(
     );
   });
 
+  // Broadcast player position to game room for real-time map visualization
+  emitToGame(gameId, 'player:location', {
+    userId,
+    role: player.role,
+    lat: newestFix.lat,
+    lng: newestFix.lon,
+    accuracyM: newestFix.accuracyM,
+    timestamp: newestFix.clientTs,
+  });
+
   // Evaluate boundary compliance asynchronously
   void checkPlayerBoundary(userId, gameId, newestFix).catch(() => {});
 
