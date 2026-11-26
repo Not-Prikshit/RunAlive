@@ -1,0 +1,482 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    margin: 0;
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: #FAF8F5;
+    color: #18181B;
+    -webkit-font-smoothing: antialiased;
+    letter-spacing: -0.01em;
+  }
+
+  .dark body {
+    background-color: #0F172A;
+    color: #F8FAFC;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Space Grotesk', 'Fredoka', sans-serif;
+    letter-spacing: -0.02em;
+    color: #18181B;
+  }
+
+  .dark h1, .dark h2, .dark h3, .dark h4, .dark h5, .dark h6 {
+    color: #F8FAFC;
+  }
+
+  code, pre, .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+/* Smooth theme transitions (300-400ms) */
+body, .comic-card, header, nav, button, input, select, textarea {
+  transition: background-color 0.35s ease, border-color 0.35s ease, color 0.35s ease, box-shadow 0.35s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/* ==========================================================================
+   SKETCHBOOK & COMIC PAPER BACKGROUNDS (Light & Dark)
+   ========================================================================== */
+
+/* Subtle sketchbook graph paper grid */
+.sketchbook-grid {
+  background-color: #F8FAFC;
+  background-image: 
+    linear-gradient(to right, rgba(15, 23, 42, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(15, 23, 42, 0.05) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.dark .sketchbook-grid {
+  background-color: #0F172A;
+  background-image: 
+    linear-gradient(to right, rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Notebook dotted paper */
+.sketchbook-dots {
+  background-color: #F8FAFC;
+  background-image: radial-gradient(circle, rgba(15, 23, 42, 0.11) 1.2px, transparent 1.2px);
+  background-size: 20px 20px;
+}
+
+.dark .sketchbook-dots {
+  background-color: #0F172A;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.14) 1.2px, transparent 1.2px);
+  background-size: 20px 20px;
+}
+
+/* Cosmic stars fallback */
+.cosmic-stars {
+  background-color: #F8FAFC;
+  background-image: radial-gradient(circle, rgba(15, 23, 42, 0.09) 1.2px, transparent 1.2px);
+  background-size: 20px 20px;
+}
+
+.dark .cosmic-stars {
+  background-color: #0F172A;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.15) 1.2px, transparent 1.2px);
+  background-size: 20px 20px;
+}
+
+/* ==========================================================================
+   COMIC CARDS & PAPER CUTOUTS (Light & Dark)
+   ========================================================================== */
+
+.comic-card {
+  background-color: #FFFFFF;
+  border: 2.5px solid #0F172A;
+  border-radius: 20px;
+  box-shadow: 4px 4px 0px 0px #0F172A;
+  transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.35s ease, border-color 0.35s ease;
+}
+
+.dark .comic-card {
+  background-color: #1E293B;
+  border-color: #334155;
+  box-shadow: 4px 4px 0px 0px #020617;
+  color: #F8FAFC;
+}
+
+.comic-card-hover:hover {
+  transform: translate(-2px, -2px);
+  box-shadow: 6px 6px 0px 0px #0F172A;
+}
+
+.dark .comic-card-hover:hover {
+  border-color: #475569;
+  box-shadow: 6px 6px 0px 0px #020617;
+}
+
+.comic-card-blue {
+  background-color: #FFFFFF;
+  border: 2.5px solid #0F172A;
+  border-radius: 20px;
+  box-shadow: 4px 4px 0px 0px #2563EB;
+}
+
+.dark .comic-card-blue {
+  background-color: #1E293B;
+  border-color: #334155;
+  box-shadow: 4px 4px 0px 0px #3B82F6;
+}
+
+.comic-card-red {
+  background-color: #FFFFFF;
+  border: 2.5px solid #0F172A;
+  border-radius: 20px;
+  box-shadow: 4px 4px 0px 0px #EF4444;
+}
+
+.dark .comic-card-red {
+  background-color: #1E293B;
+  border-color: #334155;
+  box-shadow: 4px 4px 0px 0px #EF4444;
+}
+
+.comic-card-yellow {
+  background-color: #FFFFFF;
+  border: 2.5px solid #0F172A;
+  border-radius: 20px;
+  box-shadow: 4px 4px 0px 0px #F59E0B;
+}
+
+.dark .comic-card-yellow {
+  background-color: #1E293B;
+  border-color: #334155;
+  box-shadow: 4px 4px 0px 0px #F59E0B;
+}
+
+.comic-card-green {
+  background-color: #FFFFFF;
+  border: 2.5px solid #0F172A;
+  border-radius: 20px;
+  box-shadow: 4px 4px 0px 0px #10B981;
+}
+
+.dark .comic-card-green {
+  background-color: #1E293B;
+  border-color: #334155;
+  box-shadow: 4px 4px 0px 0px #10B981;
+}
+
+/* Paper Tape corner decoration */
+.paper-tape {
+  position: relative;
+}
+
+.paper-tape::before {
+  content: '';
+  position: absolute;
+  top: -8px;
+  left: 24px;
+  width: 55px;
+  height: 18px;
+  background-color: rgba(251, 191, 36, 0.85);
+  border: 1px dashed rgba(15, 23, 42, 0.4);
+  transform: rotate(-3deg);
+  pointer-events: none;
+  z-index: 10;
+}
+
+.dark .paper-tape::before {
+  background-color: rgba(251, 191, 36, 0.85);
+  border: 1px dashed rgba(255, 255, 255, 0.4);
+}
+
+/* ==========================================================================
+   COMIC BUTTONS & TACTILE CLICKS
+   ========================================================================== */
+
+.comic-btn-primary {
+  background-color: #2563EB;
+  color: #FFFFFF;
+  border: 2.5px solid #0F172A;
+  border-radius: 14px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 800;
+  box-shadow: 3.5px 3.5px 0px 0px #0F172A;
+  transition: all 0.12s ease;
+  cursor: pointer;
+}
+
+.comic-btn-primary:hover {
+  background-color: #1D4ED8;
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0px 0px #0F172A;
+}
+
+.comic-btn-primary:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1.5px 1.5px 0px 0px #0F172A;
+}
+
+.comic-btn-red {
+  background-color: #EF4444;
+  color: #FFFFFF;
+  border: 2.5px solid #0F172A;
+  border-radius: 14px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 800;
+  box-shadow: 3.5px 3.5px 0px 0px #0F172A;
+  transition: all 0.12s ease;
+  cursor: pointer;
+}
+
+.comic-btn-red:hover {
+  background-color: #DC2626;
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0px 0px #0F172A;
+}
+
+.comic-btn-red:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1.5px 1.5px 0px 0px #0F172A;
+}
+
+.comic-btn-yellow {
+  background-color: #FBBF24;
+  color: #0F172A;
+  border: 2.5px solid #0F172A;
+  border-radius: 14px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 800;
+  box-shadow: 3.5px 3.5px 0px 0px #0F172A;
+  transition: all 0.12s ease;
+  cursor: pointer;
+}
+
+.comic-btn-yellow:hover {
+  background-color: #F59E0B;
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0px 0px #0F172A;
+}
+
+.comic-btn-yellow:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1.5px 1.5px 0px 0px #0F172A;
+}
+
+.comic-btn-green {
+  background-color: #10B981;
+  color: #FFFFFF;
+  border: 2.5px solid #0F172A;
+  border-radius: 14px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 800;
+  box-shadow: 3.5px 3.5px 0px 0px #0F172A;
+  transition: all 0.12s ease;
+  cursor: pointer;
+}
+
+.comic-btn-green:hover {
+  background-color: #059669;
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0px 0px #0F172A;
+}
+
+.comic-btn-green:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1.5px 1.5px 0px 0px #0F172A;
+}
+
+.comic-btn-white {
+  background-color: #FFFFFF;
+  color: #0F172A;
+  border: 2.5px solid #0F172A;
+  border-radius: 14px;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 700;
+  box-shadow: 3.5px 3.5px 0px 0px #0F172A;
+  transition: all 0.12s ease;
+  cursor: pointer;
+}
+
+.comic-btn-white:hover {
+  background-color: #F1F5F9;
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0px 0px #0F172A;
+}
+
+.comic-btn-white:active {
+  transform: translate(2px, 2px);
+  box-shadow: 1.5px 1.5px 0px 0px #0F172A;
+}
+
+.dark .comic-btn-white {
+  background-color: #1E293B;
+  color: #F8FAFC;
+  border-color: #475569;
+  box-shadow: 3.5px 3.5px 0px 0px #020617;
+}
+
+.dark .comic-btn-white:hover {
+  background-color: #334155;
+  box-shadow: 5px 5px 0px 0px #020617;
+}
+
+/* Backward compatibility mappings for legacy classes */
+.btn-sketch-primary {
+  @apply comic-btn-primary;
+}
+
+.btn-sketch-blue {
+  @apply comic-btn-primary;
+}
+
+.btn-sketch-coral {
+  @apply comic-btn-red;
+}
+
+.sketch-border {
+  border: 2.5px solid #18181B;
+  border-radius: 16px;
+  box-shadow: 4px 4px 0px 0px #18181B;
+  transition: all 0.15s ease;
+}
+
+.dark .sketch-border {
+  border-color: #475569;
+  box-shadow: 4px 4px 0px 0px #020617;
+}
+
+.sketch-border:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0px 0px #18181B;
+}
+
+.dark .sketch-border:hover {
+  border-color: #64748B;
+  box-shadow: 5px 5px 0px 0px #020617;
+}
+
+/* ==========================================================================
+   MARKER HIGHLIGHTS & DOODLES
+   ========================================================================== */
+
+.marker-highlight-yellow {
+  background: linear-gradient(120deg, rgba(251, 188, 4, 0) 0%, rgba(251, 188, 4, 0.45) 15%, rgba(251, 188, 4, 0.5) 85%, rgba(251, 188, 4, 0) 100%);
+  padding: 0 4px;
+  border-radius: 4px;
+}
+
+.marker-highlight-blue {
+  background: linear-gradient(120deg, rgba(66, 133, 244, 0) 0%, rgba(66, 133, 244, 0.3) 15%, rgba(66, 133, 244, 0.35) 85%, rgba(66, 133, 244, 0) 100%);
+  padding: 0 4px;
+  border-radius: 4px;
+}
+
+.marker-highlight-red {
+  background: linear-gradient(120deg, rgba(234, 67, 53, 0) 0%, rgba(234, 67, 53, 0.3) 15%, rgba(234, 67, 53, 0.35) 85%, rgba(234, 67, 53, 0) 100%);
+  padding: 0 4px;
+  border-radius: 4px;
+}
+
+.marker-highlight-green {
+  background: linear-gradient(120deg, rgba(52, 168, 83, 0) 0%, rgba(52, 168, 83, 0.3) 15%, rgba(52, 168, 83, 0.35) 85%, rgba(52, 168, 83, 0) 100%);
+  padding: 0 4px;
+  border-radius: 4px;
+}
+
+/* Comic Action Badge Stamp */
+.comic-stamp {
+  display: inline-flex;
+  align-items: center;
+  font-family: 'Space Grotesk', sans-serif;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 4px 10px;
+  border: 2px solid #18181B;
+  border-radius: 9999px;
+  box-shadow: 2.5px 2.5px 0px 0px #18181B;
+}
+
+.dark .comic-stamp {
+  border-color: #475569;
+  box-shadow: 2.5px 2.5px 0px 0px #020617;
+}
+
+/* Comic Speech Bubble */
+.speech-bubble {
+  position: relative;
+  background: #FFFFFF;
+  border: 2.5px solid #18181B;
+  border-radius: 16px;
+  box-shadow: 3px 3px 0px 0px #18181B;
+}
+
+.dark .speech-bubble {
+  background: #1E293B;
+  border-color: #475569;
+  box-shadow: 3px 3px 0px 0px #020617;
+  color: #F8FAFC;
+}
+
+.speech-bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -10px;
+  left: 24px;
+  border-width: 10px 10px 0;
+  border-style: solid;
+  border-color: #FFFFFF transparent;
+  display: block;
+  width: 0;
+}
+
+.dark .speech-bubble::after {
+  border-color: #1E293B transparent;
+}
+
+.speech-bubble::before {
+  content: '';
+  position: absolute;
+  bottom: -13px;
+  left: 22px;
+  border-width: 12px 12px 0;
+  border-style: solid;
+  border-color: #18181B transparent;
+  display: block;
+  width: 0;
+}
+
+.dark .speech-bubble::before {
+  border-color: #475569 transparent;
+}
+
+/* ==========================================================================
+   MAP TILE STYLES (Light & Clean Comic Outdoor Adventure)
+   ========================================================================== */
+
+/* Clean Comic Map Styling: Enhanced contrast and crisp street colors */
+.runalive-comic-tiles .leaflet-tile {
+  filter: contrast(1.1) saturate(1.2);
+}
+
+.runalive-dark-tiles .leaflet-tile {
+  filter: contrast(1.05) saturate(1.15);
+}
+
+/* Sleek Dark Mode Filter for Google Street Tiles (100% Global Coverage with Zero Missing Data) */
+.dark-theme-map-tiles .leaflet-tile {
+  filter: invert(100%) hue-rotate(180deg) brightness(88%) contrast(92%);
+}
+
+/* Leaflet Container Comic Border */
+.leaflet-container {
+  border-radius: 16px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}

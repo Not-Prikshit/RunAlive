@@ -7,6 +7,7 @@ import { UpdateProfileSchema, type UserProfile } from '@runalive/shared';
 import { requireAuth } from '../auth/auth.middleware.js';
 import { query, withTransaction } from '../../db/pool.js';
 import { AppError } from '../../app.js';
+import { config } from '../../config.js';
 
 export const meRouter = Router();
 
@@ -40,33 +41,50 @@ meRouter.get(
   asyncHandler(async (req: Request, res: Response) => {
     const userId = req.user!.id;
 
-    const result = await query<{
-      id: string;
-      email: string;
-      display_name: string;
-      avatar_url: string | null;
-      created_at: Date;
-    }>(
-      `SELECT id, email, display_name, avatar_url, created_at
-       FROM users
-       WHERE id = $1 AND deleted_at IS NULL`,
-      [userId]
-    );
+    try {
+      const result = await query<{
+        id: string;
+        email: string;
+        display_name: string;
+        avatar_url: string | null;
+        created_at: Date;
+      }>(
+        `SELECT id, email, display_name, avatar_url, created_at
+         FROM users
+         WHERE id = $1 AND deleted_at IS NULL`,
+        [userId]
+      );
 
-    const user = result.rows[0];
-    if (!user) {
-      throw new AppError('USER_NOT_FOUND', 'User profile not found', 404);
+      const user = result.rows[0];
+      if (!user) {
+        throw new AppError('USER_NOT_FOUND', 'User profile not found', 404);
+      }
+
+      const profile: UserProfile = {
+        id: user.id,
+        email: user.email,
+        displayName: user.display_name,
+        avatarUrl: user.avatar_url,
+        createdAt: user.created_at.toISOString(),
+      };
+
+      res.status(200).json(profile);
+    } catch (err: any) {
+      if (
+        config.NODE_ENV !== 'production' &&
+        (err?.code === 'ECONNREFUSED' || err?.message?.includes('ECONNREFUSED'))
+      ) {
+        res.status(200).json({
+          id: userId,
+          email: 'demo@runalive.app',
+          displayName: (req.user as any)?.displayName || 'Demo Player',
+          avatarUrl: null,
+          createdAt: new Date().toISOString(),
+        });
+        return;
+      }
+      throw err;
     }
-
-    const profile: UserProfile = {
-      id: user.id,
-      email: user.email,
-      displayName: user.display_name,
-      avatarUrl: user.avatar_url,
-      createdAt: user.created_at.toISOString(),
-    };
-
-    res.status(200).json(profile);
   })
 );
 
@@ -87,34 +105,51 @@ meRouter.patch(
       return;
     }
 
-    const result = await query<{
-      id: string;
-      email: string;
-      display_name: string;
-      avatar_url: string | null;
-      created_at: Date;
-    }>(
-      `UPDATE users
-       SET display_name = $1, updated_at = NOW()
-       WHERE id = $2 AND deleted_at IS NULL
-       RETURNING id, email, display_name, avatar_url, created_at`,
-      [input.displayName.trim(), userId]
-    );
+    try {
+      const result = await query<{
+        id: string;
+        email: string;
+        display_name: string;
+        avatar_url: string | null;
+        created_at: Date;
+      }>(
+        `UPDATE users
+         SET display_name = $1, updated_at = NOW()
+         WHERE id = $2 AND deleted_at IS NULL
+         RETURNING id, email, display_name, avatar_url, created_at`,
+        [input.displayName.trim(), userId]
+      );
 
-    const user = result.rows[0];
-    if (!user) {
-      throw new AppError('USER_NOT_FOUND', 'User profile not found', 404);
+      const user = result.rows[0];
+      if (!user) {
+        throw new AppError('USER_NOT_FOUND', 'User profile not found', 404);
+      }
+
+      const profile: UserProfile = {
+        id: user.id,
+        email: user.email,
+        displayName: user.display_name,
+        avatarUrl: user.avatar_url,
+        createdAt: user.created_at.toISOString(),
+      };
+
+      res.status(200).json(profile);
+    } catch (err: any) {
+      if (
+        config.NODE_ENV !== 'production' &&
+        (err?.code === 'ECONNREFUSED' || err?.message?.includes('ECONNREFUSED'))
+      ) {
+        res.status(200).json({
+          id: userId,
+          email: req.user!.email || 'demo@runalive.app',
+          displayName: input.displayName.trim(),
+          avatarUrl: null,
+          createdAt: new Date().toISOString(),
+        });
+        return;
+      }
+      throw err;
     }
-
-    const profile: UserProfile = {
-      id: user.id,
-      email: user.email,
-      displayName: user.display_name,
-      avatarUrl: user.avatar_url,
-      createdAt: user.created_at.toISOString(),
-    };
-
-    res.status(200).json(profile);
   })
 );
 

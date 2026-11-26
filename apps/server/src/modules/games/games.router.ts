@@ -2,6 +2,7 @@
 // Express router for Game creation, Lobby management, and Match endpoints.
 
 import { Router, type Request, type Response, type NextFunction } from 'express';
+import crypto from 'node:crypto';
 import { ZodError, z } from 'zod';
 import {
   CreateGameSchema,
@@ -18,6 +19,7 @@ import * as engineService from './engine.service.js';
 import * as locationsService from '../locations/locations.service.js';
 import * as boundaryService from '../boundary/boundary.service.js';
 import * as catchesService from '../catches/catches.service.js';
+import { config } from '../../config.js';
 
 export const gamesRouter = Router();
 
@@ -29,6 +31,21 @@ const param = (req: Request, key: string): string => {
   if (Array.isArray(val)) return val[0] ?? '';
   return val ?? '';
 };
+
+const normalizeRoomCode = (raw: string): string => {
+  return raw.trim().replace(/^RUN-?/i, '').replace(/[^A-Z0-9]/gi, '').toUpperCase();
+};
+
+const ROOM_CODE_CHARSET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 32 unambiguous chars
+
+function generateRandomRoomCode(): string {
+  const bytes = crypto.randomBytes(6);
+  let code = '';
+  for (let i = 0; i < 6; i++) {
+    code += ROOM_CODE_CHARSET[bytes[i]! % ROOM_CODE_CHARSET.length];
+  }
+  return code;
+}
 
 const asyncHandler =
   (fn: (req: Request, res: Response, next: NextFunction) => Promise<unknown>) =>
@@ -49,15 +66,118 @@ const asyncHandler =
   };
 
 /**
+ * In-memory fallback mock games store for dev when PostgreSQL is unavailable
+ */
+const mockGames = new Map<string, any>();
+
+/**
  * POST /api/v1/games
  * Create a new game with room code and initial rounds
  */
 gamesRouter.post(
   '/',
   asyncHandler(async (req: Request, res: Response) => {
-    const input = CreateGameSchema.parse(req.body);
-    const game = await gamesService.createGame(req.user!.id, input);
-    res.status(201).json(game);
+    const body: any = req.body || {};
+    let createInput: any;
+
+    if (body.config && body.rounds && Array.isArray(body.rounds)) {
+      createInput = body;
+    } else {
+      const name = body.name || body.matchName || 'Campus Tag Match';
+      const maxPlayers = Number(body.maxPlayers) || 16;
+      const centerLat = Number(body.boundaryCenterLat ?? body.lat ?? 28.4595);
+      const centerLon = Number(body.boundaryCenterLng ?? body.lng ?? 77.5135);
+      const radiusM = Number(body.boundaryRadiusMeters ?? body.radius ?? 500);
+      const totalRounds = Number(body.totalRounds ?? body.rounds ?? 1);
+      const durationSeconds = (Number(body.roundDurationMinutes) || 15) * 60;
+
+      const rounds = [];
+      for (let r = 1; r <= totalRounds; r++) {
+        rounds.push({
+          roundNumber: r,
+          durationSeconds: durationSeconds,
+          centerLat: centerLat,
+          centerLon: centerLon,
+          radiusM: Math.max(50, Math.round(radiusM * Math.pow(0.75, r - 1))),
+        });
+      }
+
+      createInput = {
+        config: {
+          name,
+          maxPlayers,
+          teamAssignmentMethod: 'RANDOM',
+          hostParticipates: true,
+          announceLeadSeconds: 120,
+          runnerShareIntervalSeconds: 90,
+          violationGraceSeconds: 60,
+          catchVerificationMode: 'RUNNER_OR_HOST',
+          obfuscationGridM: 60,
+          locationLossThresholdSeconds: 90,
+          autoEliminateOnLocationLoss: false,
+          requireAllReady: false,
+        },
+        rounds,
+      };
+    }
+
+    const input = CreateGameSchema.parse(createInput);
+    try {
+      const game = await gamesService.createGame(req.user!.id, input);
+      res.status(201).json({ ...game, game, gameId: game.id });
+    } catch (err: any) {
+      if (
+        config.NODE_ENV !== 'production' &&
+        (err?.code === 'ECONNREFUSED' || err?.message?.includes('ECONNREFUSED'))
+      ) {
+        const gameId = crypto.randomUUID();
+        let roomCode = generateRandomRoomCode();
+        while (mockGames.has(roomCode)) {
+          roomCode = generateRandomRoomCode();
+        }
+
+        const inputData: any = input;
+        const name = inputData.config?.name || inputData.name || 'Campus Tag Match';
+        const totalRounds = inputData.rounds?.length || inputData.totalRounds || 1;
+        const boundaryCenterLat = inputData.rounds?.[0]?.centerLat ?? inputData.rounds?.[0]?.boundaryCenterLat ?? 28.4595;
+        const boundaryCenterLng = inputData.rounds?.[0]?.centerLon ?? inputData.rounds?.[0]?.boundaryCenterLng ?? 77.5135;
+        const boundaryRadiusMeters = inputData.rounds?.[0]?.radiusM ?? inputData.rounds?.[0]?.boundaryRadiusMeters ?? 500;
+        
+        const hostPlayer = {
+          userId: req.user!.id,
+          displayName: req.user!.displayName || 'Host Runner',
+          avatarUrl: null,
+          role: 'RUNNER',
+          status: 'ACTIVE',
+          isReady: true,
+          isConnected: true,
+          lastSeenAt: new Date().toISOString(),
+        };
+
+        const fallbackGame = {
+          id: gameId,
+          roomCode,
+          name,
+          status: 'LOBBY',
+          hostUserId: req.user!.id,
+          maxPlayers: inputData.config?.maxPlayers || 16,
+          currentRound: 1,
+          totalRounds,
+          boundaryCenterLat,
+          boundaryCenterLng,
+          boundaryRadiusMeters,
+          players: [hostPlayer],
+          rounds: inputData.rounds || [],
+          createdAt: new Date().toISOString(),
+        };
+
+        mockGames.set(gameId, fallbackGame);
+        mockGames.set(roomCode, fallbackGame);
+        res.status(201).json({ ...fallbackGame, game: fallbackGame, gameId });
+        return;
+      }
+      throw err;
+    }
   })
 );
 
@@ -68,8 +188,38 @@ gamesRouter.post(
 gamesRouter.get(
   '/by-code/:code',
   asyncHandler(async (req: Request, res: Response) => {
-    const preview = await gamesService.getGameByCode(param(req, 'code'));
-    res.status(200).json(preview);
+    const rawCode = param(req, 'code');
+    const cleanCode = normalizeRoomCode(rawCode);
+    try {
+      const preview = await gamesService.getGameByCode(cleanCode);
+      res.status(200).json(preview);
+    } catch (err: any) {
+      if (
+        config.NODE_ENV !== 'production' &&
+        (err?.code === 'ECONNREFUSED' || err?.message?.includes('ECONNREFUSED') || mockGames.has(cleanCode))
+      ) {
+        const g = mockGames.get(cleanCode);
+        if (!g) {
+          res.status(404).json({
+            error: {
+              code: 'GAME_NOT_FOUND',
+              message: `No active match found for code ${cleanCode}`,
+            },
+          });
+          return;
+        }
+        res.status(200).json({
+          id: g.id,
+          roomCode: g.roomCode,
+          name: g.name,
+          status: g.status,
+          playerCount: g.players?.length || 1,
+          maxPlayers: g.maxPlayers || 16,
+        });
+        return;
+      }
+      throw err;
+    }
   })
 );
 
@@ -80,8 +230,30 @@ gamesRouter.get(
 gamesRouter.get(
   '/:id',
   asyncHandler(async (req: Request, res: Response) => {
-    const game = await gamesService.getGameById(param(req, 'id'));
-    res.status(200).json(game);
+    const id = param(req, 'id');
+    try {
+      const game = await gamesService.getGameById(id);
+      res.status(200).json({ ...game, game });
+    } catch (err: any) {
+      if (
+        config.NODE_ENV !== 'production' &&
+        (err?.code === 'ECONNREFUSED' || err?.message?.includes('ECONNREFUSED') || mockGames.has(id))
+      ) {
+        const g = mockGames.get(id);
+        if (!g) {
+          res.status(404).json({
+            error: {
+              code: 'GAME_NOT_FOUND',
+              message: 'Game not found',
+            },
+          });
+          return;
+        }
+        res.status(200).json({ game: g });
+        return;
+      }
+      throw err;
+    }
   })
 );
 
@@ -92,9 +264,89 @@ gamesRouter.get(
 gamesRouter.post(
   '/join',
   asyncHandler(async (req: Request, res: Response) => {
-    const input = JoinGameSchema.parse(req.body);
-    const result = await gamesService.joinGame(req.user!.id, input);
-    res.status(200).json(result);
+    const body: any = req.body || {};
+    const rawCode = body.roomCode || body.code || '';
+    const cleanCode = normalizeRoomCode(rawCode);
+    
+    if (!cleanCode || cleanCode.length < 4) {
+      res.status(400).json({
+        error: {
+          code: 'INVALID_CODE',
+          message: 'Please provide a valid 6-character room code',
+        },
+      });
+      return;
+    }
+
+    const payload = {
+      roomCode: cleanCode.length === 6 ? cleanCode : cleanCode.padEnd(6, 'X'),
+      locationConsentAt: body.locationConsentAt || new Date().toISOString(),
+    };
+
+    const input = JoinGameSchema.parse(payload);
+    try {
+      const result = await gamesService.joinGame(req.user!.id, input);
+      res.status(200).json({ ...result, gameId: result.game.id });
+    } catch (err: any) {
+      if (
+        config.NODE_ENV !== 'production' &&
+        (err?.code === 'ECONNREFUSED' || err?.message?.includes('ECONNREFUSED') || mockGames.has(cleanCode))
+      ) {
+        const game = mockGames.get(cleanCode);
+        if (!game) {
+          res.status(404).json({
+            error: {
+              code: 'GAME_NOT_FOUND',
+              message: `No active match found for code ${cleanCode}`,
+            },
+          });
+          return;
+        }
+
+        if (game.status !== 'LOBBY') {
+          res.status(400).json({
+            error: {
+              code: 'GAME_ALREADY_STARTED',
+              message: 'This match has already started and is no longer accepting new players.',
+            },
+          });
+          return;
+        }
+
+        const existingPlayer = game.players?.find((p: any) => p.userId === req.user!.id);
+        if (!existingPlayer) {
+          if ((game.players?.length || 0) >= (game.maxPlayers || 16)) {
+            res.status(400).json({
+              error: {
+                code: 'GAME_FULL',
+                message: 'This match has reached maximum player capacity.',
+              },
+            });
+            return;
+          }
+
+          game.players.push({
+            userId: req.user!.id,
+            displayName: req.user!.displayName || 'Player',
+            avatarUrl: null,
+            role: 'RUNNER',
+            status: 'ACTIVE',
+            isReady: false,
+            isConnected: true,
+            lastSeenAt: new Date().toISOString(),
+          });
+        }
+
+        res.status(200).json({
+          gameId: game.id,
+          role: existingPlayer?.role || 'RUNNER',
+          status: 'LOBBY',
+          game,
+        });
+        return;
+      }
+      throw err;
+    }
   })
 );
 
@@ -132,7 +384,23 @@ gamesRouter.post(
   asyncHandler(async (req: Request, res: Response) => {
     const schema = z.object({ isReady: z.boolean().default(true) });
     const { isReady } = schema.parse(req.body);
-    await gamesService.setReady(req.user!.id, param(req, 'id'), isReady);
+    const gameId = param(req, 'id');
+    try {
+      await gamesService.setReady(req.user!.id, gameId, isReady);
+    } catch (err: any) {
+      if (
+        config.NODE_ENV !== 'production' &&
+        (err?.code === 'ECONNREFUSED' || err?.message?.includes('ECONNREFUSED') || mockGames.has(gameId))
+      ) {
+        const g = mockGames.get(gameId);
+        if (g) {
+          const p = g.players?.find((pl: any) => pl.userId === req.user!.id);
+          if (p) p.isReady = isReady;
+        }
+      } else {
+        throw err;
+      }
+    }
     res.status(200).json({ success: true });
   })
 );
@@ -145,7 +413,23 @@ gamesRouter.post(
   '/:id/teams/assign',
   asyncHandler(async (req: Request, res: Response) => {
     const input = TeamAssignSchema.parse(req.body);
-    await gamesService.assignRole(req.user!.id, param(req, 'id'), input.userId, input.role);
+    const gameId = param(req, 'id');
+    try {
+      await gamesService.assignRole(req.user!.id, gameId, input.userId, input.role);
+    } catch (err: any) {
+      if (
+        config.NODE_ENV !== 'production' &&
+        (err?.code === 'ECONNREFUSED' || err?.message?.includes('ECONNREFUSED') || mockGames.has(gameId))
+      ) {
+        const g = mockGames.get(gameId);
+        if (g) {
+          const p = g.players?.find((pl: any) => pl.userId === input.userId);
+          if (p) p.role = input.role;
+        }
+      } else {
+        throw err;
+      }
+    }
     res.status(200).json({ success: true });
   })
 );
@@ -158,7 +442,26 @@ gamesRouter.post(
   '/:id/teams/randomize',
   asyncHandler(async (req: Request, res: Response) => {
     const input = RandomizeTeamsSchema.optional().parse(req.body || {});
-    await gamesService.randomizeTeams(req.user!.id, param(req, 'id'), input);
+    const gameId = param(req, 'id');
+    try {
+      await gamesService.randomizeTeams(req.user!.id, gameId, input);
+    } catch (err: any) {
+      if (
+        config.NODE_ENV !== 'production' &&
+        (err?.code === 'ECONNREFUSED' || err?.message?.includes('ECONNREFUSED') || mockGames.has(gameId))
+      ) {
+        const g = mockGames.get(gameId);
+        if (g && Array.isArray(g.players) && g.players.length > 0) {
+          const total = g.players.length;
+          const seekersCount = Math.max(1, Math.floor(total / 3));
+          g.players.forEach((p: any, idx: number) => {
+            p.role = idx < seekersCount ? 'SEEKER' : 'RUNNER';
+          });
+        }
+      } else {
+        throw err;
+      }
+    }
     res.status(200).json({ success: true });
   })
 );

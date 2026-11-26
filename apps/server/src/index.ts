@@ -13,8 +13,8 @@ async function main() {
   const httpServer = createServer(app);
   const io = createSocketServer(httpServer);
 
-  httpServer.listen(config.PORT, () => {
-    logger.info({ port: config.PORT, env: config.NODE_ENV }, '🚀 RunAlive server listening');
+  httpServer.listen(config.PORT, '0.0.0.0', () => {
+    logger.info({ port: config.PORT, host: '0.0.0.0', env: config.NODE_ENV }, '🚀 RunAlive server listening');
   });
 
   // Graceful shutdown

@@ -26,7 +26,7 @@ exports.up = async (pgm) => {
     payload: {
       type: 'jsonb',
       notNull: true,
-      default: "'{}'",
+      default: '{}',
     },
     state_version: {
       type: 'int',

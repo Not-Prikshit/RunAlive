@@ -46,7 +46,6 @@ exports.up = async (pgm) => {
   pgm.createIndex('idempotency_keys', 'key');
   pgm.createIndex('idempotency_keys', 'expires_at', {
     name: 'idempotency_keys_expires_idx',
-    where: 'expires_at < NOW()',
   });
 };
 

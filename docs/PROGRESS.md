@@ -7,6 +7,7 @@
 - [x] `packages/shared`: Enums, Models, Zod schemas, Socket.IO event contract
 - [x] `apps/server`: Express, Helmet, CORS, Rate Limiting, Pino Logger, Vitest
 - [x] `apps/mobile`: React Native 0.76, Expo 52, Expo Router 4, Design Tokens
+- [x] `apps/web`: Vite + React + Tailwind + Leaflet Web Application
 - [x] Documentation: `README.md`, `PROGRESS.md`, `API.md`, `SECURITY.md`, `PRIVACY.md`, `DEVICE_TESTING.md`, `DANGER_METER.md`
 - **Gate Check:** `pnpm -r typecheck` passes with 0 errors across all workspaces.
 
@@ -28,6 +29,7 @@
 - [x] Password reset request with 30m single-use token and email notification
 - [x] User `/api/v1/me` profile endpoints (GET, PATCH display name, DELETE soft-delete)
 - [x] Mobile auth screens (`login.tsx`, `register.tsx`, `forgot-password.tsx`) connected to API
+- [x] Web auth screen (`AuthView.tsx`) with instant demo sign-in buttons (Host, Runner, Seeker)
 - [x] Unit and Supertest tests in `apps/server/src/test/auth.test.ts` (18 tests passing)
 - **Gate Check:** Auth test suite green (18 tests passing).
 
@@ -43,6 +45,7 @@
 - [x] Host player kick with self-kick protection (`POST /api/v1/games/:id/kick`)
 - [x] Socket.IO server room lifecycle (`game:{id}`, `game:{id}:runners`, `game:{id}:seekers`, `user:{id}`)
 - [x] Mobile Lobby screen (`apps/mobile/app/(app)/lobby.tsx`) with realtime live updates
+- [x] Web Lobby screen (`apps/web/src/components/LobbyView.tsx`) with Join by Room Code and Quick Create
 - [x] Unit and Supertest tests in `apps/server/src/test/lobby.test.ts` (8 tests passing)
 - **Gate Check:** Lobby test suite green (8 tests passing).
 
@@ -53,9 +56,10 @@
 - [x] `react-native-maps` circular zone renderer with high-contrast outdoor styling
 - [x] Draggable zone center marker for repositioning campus play boundaries
 - [x] Radius stepper adjustments (-50m, -10m, +10m, +50m) from 50m to 5000m
-- [x] GPS current location centering via `expo-location`
-- [x] Host settings screen (`apps/mobile/app/(app)/host/settings.tsx`) integrating the perimeter editor
-- **Gate Check:** Monorepo typecheck passes cleanly with mobile map components.
+- [x] GPS current location centering via `expo-location` and browser `navigator.geolocation`
+- [x] Host settings screen (`apps/mobile/app/(app)/host/settings.tsx`)
+- [x] Web Host Perimeter Editor (`apps/web/src/components/HostPerimeterEditor.tsx`) with dynamic radius sliders and GPS snapping
+- **Gate Check:** Monorepo typecheck passes cleanly with mobile and web map components.
 
 ---
 
@@ -72,38 +76,47 @@
 
 ---
 
-## Stage 6 — Location Ingestion Pipeline *(In Progress)*
-- [ ] Mobile foreground & background location tasks (`expo-task-manager`)
-- [ ] Location batch ingestion endpoint (`POST /api/v1/games/:id/location`)
-- [ ] Speed plausibility checks (> 12 m/s suspect flag)
-- [ ] Obfuscated runner coordinate snapshots on `SHARE_TICK` (grid snapping + jitter)
+## Stage 6 — Location Ingestion Pipeline ✅
+- [x] Mobile foreground & background location tasks (`expo-task-manager`)
+- [x] Web browser HTML5 Geolocation tracking (`navigator.geolocation.watchPosition`)
+- [x] Location batch ingestion endpoint (`POST /api/v1/games/:id/location`)
+- [x] Speed plausibility checks (> 12 m/s suspect flag)
+- [x] Obfuscated runner coordinate snapshots on `SHARE_TICK` (grid snapping + jitter)
+- [x] Unit and Supertest tests in `apps/server/src/test/location.test.ts` (4 tests passing)
 
 ---
 
-## Stage 7 — Boundary Enforcement *(Pending)*
-- [ ] PostGIS `ST_DWithin` boundary distance calculations
-- [ ] Grace period countdown timer (default 60s) on perimeter exit
-- [ ] Conclusive GPS fix filter (`accuracyM <= 50`)
-- [ ] Disqualification handling on expired grace period
+## Stage 7 — Boundary Enforcement ✅
+- [x] PostGIS `ST_DWithin` boundary distance calculations
+- [x] Grace period countdown timer (default 60s) on perimeter exit
+- [x] Conclusive GPS fix filter (`accuracyM <= 50`)
+- [x] Disqualification handling on expired grace period
+- [x] Unit and Supertest tests in `apps/server/src/test/boundary.test.ts` (5 tests passing)
 
 ---
 
-## Stage 8 — Danger Meter *(Pending)*
-- [ ] Seeker-runner distance calculation
-- [ ] Exponential Moving Average (EMA, alpha = 0.4) distance smoothing
-- [ ] 20% hysteresis band transition logic (Safe, Low, Medium, High, Critical)
-- [ ] Individual danger band emission per runner via Socket.IO
+## Stage 8 — Danger Meter ✅
+- [x] Seeker-runner distance calculation
+- [x] Exponential Moving Average (EMA, alpha = 0.4) distance smoothing
+- [x] 20% hysteresis band transition logic (Safe, Low, Medium, High, Critical)
+- [x] Individual danger band emission per runner via Socket.IO
+- [x] Danger Meter UI components (`apps/mobile/src/components/DangerMeter.tsx`, `apps/web/src/components/DangerMeter.tsx`)
+- [x] Unit and Supertest tests in `apps/server/src/test/danger.test.ts` (14 tests passing)
 
 ---
 
-## Stage 9 — Catch Reporting, Win Conditions, Results *(Pending)*
-- [ ] Seeker catch submission with idempotency key
-- [ ] Runner confirmation / Host dispute verification
-- [ ] Win condition resolution (all runners eliminated -> Seekers win; timer expires -> Runners win)
-- [ ] Match summary calculations and results persistence
+## Stage 9 — Catch Reporting, Win Conditions, Results ✅
+- [x] Seeker catch submission with idempotency key (`POST /api/v1/games/:id/catches`)
+- [x] Runner confirmation / Host dispute verification
+- [x] Win condition resolution (all runners eliminated -> Seekers win; timer expires -> Runners win)
+- [x] Match summary calculations and results persistence (`GET /api/v1/games/:id/results`)
+- [x] Unit and Supertest tests in `apps/server/src/test/catches.test.ts` (8 tests passing)
 
 ---
 
-## Stage 10 & 11 — Match History, Stats, Device Testing *(Pending)*
-- [ ] Match history screen and user stats
-- [ ] Device testing documentation and EAS Build profiles
+## Stage 10 & 11 — Match History, Stats, Device Testing & Web App ✅
+- [x] Match history screen and user stats (`apps/mobile/app/(app)/history.tsx`, `apps/web/src/components/MatchHistory.tsx`)
+- [x] Full in-game HUD on both Mobile and Web (`GameView.tsx`)
+- [x] Results celebration UI (`MatchResults.tsx`, `results.tsx`)
+- [x] Zero-config mock fallback for local UI development without Docker
+- [x] Automated test suite: 72 tests passing across all 9 server modules

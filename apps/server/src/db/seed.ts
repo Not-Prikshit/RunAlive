@@ -7,18 +7,18 @@ import { logger } from '../logger.js';
 
 export const DEMO_CREDENTIALS = {
   host: {
-    email: 'demo@runalive.test',
-    password: 'RunAlive2026!',
+    email: 'host@demo.runalive.app',
+    password: 'Demo1234!',
     displayName: 'Campus Host (Alex)',
   },
   runner: {
-    email: 'runner@runalive.test',
-    password: 'RunAlive2026!',
+    email: 'runner@demo.runalive.app',
+    password: 'Demo1234!',
     displayName: 'Speedy Runner (Sam)',
   },
   seeker: {
-    email: 'seeker@runalive.test',
-    password: 'RunAlive2026!',
+    email: 'seeker@demo.runalive.app',
+    password: 'Demo1234!',
     displayName: 'Eagle Seeker (Riley)',
   },
 };

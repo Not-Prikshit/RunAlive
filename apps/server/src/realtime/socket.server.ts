@@ -18,7 +18,14 @@ export let io: SocketServer | undefined;
 export function createSocketServer(httpServer: HttpServer): SocketServer {
   io = new SocketServer(httpServer, {
     cors: {
-      origin: config.CORS_ORIGINS.split(',').map((o) => o.trim()),
+      origin: (origin, callback) => {
+        if (!origin || config.NODE_ENV !== 'production') {
+          callback(null, true);
+        } else {
+          const allowed = config.CORS_ORIGINS.split(',').map((o) => o.trim());
+          callback(null, allowed.includes(origin));
+        }
+      },
       credentials: true,
     },
     pingTimeout: 20_000,

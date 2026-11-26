@@ -4,6 +4,8 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
+import path from 'node:path';
+import fs from 'node:fs';
 import { rateLimit } from 'express-rate-limit';
 import { config } from './config.js';
 import { logger } from './logger.js';
@@ -31,10 +33,40 @@ export function createApp() {
   const app = express();
 
   // ── Security middleware ──────────────────────────────────────────────────
-  app.use(helmet());
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          defaultSrc: ["'self'"],
+          scriptSrc: ["'self'", "'unsafe-inline'"],
+          styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+          fontSrc: ["'self'", 'https://fonts.gstatic.com', 'data:'],
+          imgSrc: [
+            "'self'",
+            'data:',
+            'blob:',
+            'https://*.google.com',
+            'https://google.com',
+            'https://*.googleapis.com',
+            'https://*.gstatic.com',
+          ],
+          connectSrc: ["'self'", 'ws:', 'wss:', 'http:', 'https:'],
+        },
+      },
+      crossOriginEmbedderPolicy: false,
+    })
+  );
   app.use(
     cors({
-      origin: config.CORS_ORIGINS.split(',').map((o) => o.trim()),
+      origin: (origin, callback) => {
+        // In development, allow local network device testing (e.g. mobile phones on Wi-Fi)
+        if (!origin || config.NODE_ENV !== 'production') {
+          callback(null, true);
+        } else {
+          const allowed = config.CORS_ORIGINS.split(',').map((o) => o.trim());
+          callback(null, allowed.includes(origin));
+        }
+      },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     })
@@ -62,9 +94,33 @@ export function createApp() {
 
   // ── Routes ────────────────────────────────────────────────────────────────
   app.use('/healthz', healthRouter);
+  app.use('/health', healthRouter);
+  app.use('/api/v1/health', healthRouter);
   app.use('/api/v1/auth', authRouter);
   app.use('/api/v1/me', meRouter);
   app.use('/api/v1/games', gamesRouter);
+
+  // ── Static Web Frontend (Single Unified Production / Preview Port) ─────────
+  const candidates = [
+    path.resolve(process.cwd(), 'apps/web/dist'),
+    path.resolve(process.cwd(), '../web/dist'),
+    path.resolve(process.cwd(), 'dist'),
+  ];
+  const webDistPath = candidates.find((dir) => fs.existsSync(path.join(dir, 'index.html')));
+
+  if (webDistPath) {
+    app.use(express.static(webDistPath));
+    app.get('*', (req: Request, res: Response, next: NextFunction) => {
+      if (
+        req.path.startsWith('/api') ||
+        req.path.startsWith('/healthz') ||
+        req.path.startsWith('/health')
+      ) {
+        return next();
+      }
+      res.sendFile(path.join(webDistPath, 'index.html'));
+    });
+  }
 
   // ── 404 handler ───────────────────────────────────────────────────────────
   app.use((_req: Request, res: Response) => {

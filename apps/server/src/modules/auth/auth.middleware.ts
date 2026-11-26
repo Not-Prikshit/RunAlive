@@ -7,6 +7,7 @@ import { verifyAccessToken, type AccessTokenPayload } from './auth.service.js';
 export interface AuthenticatedUser {
   id: string;
   displayName: string;
+  email?: string;
 }
 
 declare global {

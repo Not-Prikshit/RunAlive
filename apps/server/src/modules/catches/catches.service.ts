@@ -15,6 +15,7 @@ import { query, withTransaction } from '../../db/pool.js';
 import { AppError } from '../../app.js';
 import { emitToGame, emitToUser } from '../../realtime/socket.server.js';
 import { endGame } from '../games/engine.service.js';
+import { haversineDistanceM } from '../locations/locations.service.js';
 
 export interface CatchReportRecord {
   id: string;
@@ -245,6 +246,44 @@ export async function confirmCatch(
     }
     if (game.catch_verification_mode === CatchVerificationMode.RUNNER_OR_HOST && !isRunner && !isHost) {
       throw new AppError('FORBIDDEN', 'Only the runner or match host can confirm this catch', 403);
+    }
+
+    // Proximity Verification: Check if latest GPS is available
+    const { rows: locRows } = await client.query<{
+      user_id: string;
+      lat: number;
+      lon: number;
+      accuracy_m: number;
+      client_ts: Date;
+    }>(
+      `SELECT user_id, 
+              ST_Y(location::geometry) as lat, 
+              ST_X(location::geometry) as lon, 
+              accuracy_m, 
+              client_ts
+       FROM player_latest_locations
+       WHERE game_id = $1 AND user_id IN ($2, $3)`,
+      [gameId, reportRow.seeker_user_id, reportRow.runner_user_id]
+    );
+
+    const seekerLoc = locRows.find((l) => l.user_id === reportRow.seeker_user_id);
+    const runnerLoc = locRows.find((l) => l.user_id === reportRow.runner_user_id);
+
+    if (seekerLoc && runnerLoc) {
+      const dist = haversineDistanceM(
+        Number(seekerLoc.lat),
+        Number(seekerLoc.lon),
+        Number(runnerLoc.lat),
+        Number(runnerLoc.lon)
+      );
+
+      if (dist > 10.0) {
+        throw new AppError(
+          'PROXIMITY_EXCEEDED',
+          `Proximity verification failed: players are ${dist.toFixed(1)}m apart (must be <= 10m)`,
+          400
+        );
+      }
     }
 
     // 3. Mark catch report CONFIRMED

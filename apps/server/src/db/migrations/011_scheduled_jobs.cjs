@@ -22,7 +22,7 @@ exports.up = async (pgm) => {
     payload: {
       type: 'jsonb',
       notNull: true,
-      default: "'{}'",
+      default: '{}',
     },
     dedupe_key: {
       type: 'text',
