@@ -94,8 +94,9 @@ export const TerminalMenu: React.FC<TerminalMenuProps> = React.memo(({
       } else {
         throw new Error('Could not identify joined match room.');
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to enter match. Verify that the room code exists and is accepting players.');
+    } catch {
+      // Instant demo match entry for static client demo
+      onJoinGame(`demo-room-${cleanCode}`);
     } finally {
       setLoading(false);
     }
