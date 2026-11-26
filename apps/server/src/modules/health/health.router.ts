@@ -17,13 +17,13 @@ healthRouter.get('/', async (_req: Request, res: Response) => {
       dbTime: dbTime?.toISOString() ?? null,
       version,
     });
-  } catch (_err) {
+  } catch (err: any) {
     res.status(503).json({
       status: 'degraded',
       serverTime,
       dbTime: null,
       version,
-      error: 'Database unreachable',
+      error: err?.message || 'Database unreachable',
     });
   }
 });

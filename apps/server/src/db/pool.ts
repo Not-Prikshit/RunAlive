@@ -12,24 +12,18 @@ const connectionString =
     ? (config.DATABASE_URL_TEST ?? config.DATABASE_URL)
     : config.DATABASE_URL;
 
-// Enable SSL for remote cloud databases (Supabase, Neon, Render Postgres)
+// Enable SSL with rejectUnauthorized: false for all remote/cloud databases
 const isRemote =
   !connectionString.includes('localhost') &&
   !connectionString.includes('127.0.0.1') &&
   !connectionString.includes('postgres:5432');
-
-const sslConfig = isRemote
-  ? {
-      rejectUnauthorized: false,
-    }
-  : undefined;
 
 export const pool = new Pool({
   connectionString,
   max: config.NODE_ENV === 'test' ? 5 : 20,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 15_000,
-  ...(sslConfig ? { ssl: sslConfig } : {}),
+  ssl: isRemote ? { rejectUnauthorized: false } : false,
 });
 
 pool.on('error', (err) => {
