@@ -54,7 +54,6 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     } catch {
       onJoinGame(`demo-game-${roomCode.trim().toUpperCase()}`);
     } finally {
-    } finally {
       setLoading(false);
     }
   };
