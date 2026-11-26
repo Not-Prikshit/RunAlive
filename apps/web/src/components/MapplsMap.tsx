@@ -293,21 +293,6 @@ export const MapplsMap: React.FC<MapplsMapProps> = React.memo(({
     editRectRotationRef.current = editRectRotation;
   }, [editRectRotation]);
 
-  // 30-second GPS interval
-  useEffect(() => {
-    const timer = setInterval(() => {
-      setGpsCountdown((prev) => {
-        if (prev <= 1) {
-          triggerGPSRefresh();
-          return 30;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, []);
-
   const triggerGPSRefresh = useCallback(() => {
     if (!navigator.geolocation) return;
     setIsLocating(true);
@@ -323,6 +308,15 @@ export const MapplsMap: React.FC<MapplsMapProps> = React.memo(({
       { enableHighAccuracy: true, timeout: 8000 }
     );
   }, []);
+
+  // 30-second GPS refresh cycle (avoids 1-second map re-renders)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      triggerGPSRefresh();
+    }, 30000);
+
+    return () => clearInterval(timer);
+  }, [triggerGPSRefresh]);
 
   const applyTileLayer = useCallback(
     (targetMap: L.Map, layer: 'STREET' | 'SATELLITE', currentTheme: 'light' | 'dark') => {
@@ -1048,14 +1042,16 @@ export const MapplsMap: React.FC<MapplsMapProps> = React.memo(({
     });
   }, [runners, seekers, liveLocation]);
 
-  // Subscribe to Interpolation Engine for 60fps Smooth Marker Updates
+  // Subscribe to Interpolation Engine for Smooth Marker Updates
   useEffect(() => {
     const unsubscribe = globalInterpolationEngine.subscribe((positions: Map<string, VisualPosition>) => {
       positions.forEach((pos, id) => {
         const item = markerPoolRef.current.get(id);
         if (item) {
-          // Direct Leaflet DOM transform update — ZERO React re-renders!
-          item.marker.setLatLng([pos.lat, pos.lng]);
+          const cur = item.marker.getLatLng();
+          if (Math.abs(cur.lat - pos.lat) > 0.000003 || Math.abs(cur.lng - pos.lng) > 0.000003) {
+            item.marker.setLatLng([pos.lat, pos.lng]);
+          }
         }
       });
     });

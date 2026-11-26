@@ -82,6 +82,7 @@ export interface GameDetails {
   rectHeightMeters?: number;
   rectRotationDeg?: number;
   polygonPoints?: Array<[number, number]>;
+  revealSeekersOnMap?: boolean;
 }
 
 export interface GamePerimeterConfig {
@@ -90,6 +91,7 @@ export interface GamePerimeterConfig {
   rectHeightMeters?: number;
   rectRotationDeg?: number;
   polygonPoints?: Array<[number, number]>;
+  revealSeekersOnMap?: boolean;
 }
 
 export const gamePerimeters = new Map<string, GamePerimeterConfig>();
@@ -441,6 +443,7 @@ export async function getGameById(gameId: string): Promise<GameDetails> {
     rectHeightMeters: gamePerimeters.get(game.id)?.rectHeightMeters || 600,
     rectRotationDeg: gamePerimeters.get(game.id)?.rectRotationDeg || 0,
     polygonPoints: gamePerimeters.get(game.id)?.polygonPoints || [],
+    revealSeekersOnMap: gamePerimeters.get(game.id)?.revealSeekersOnMap ?? true,
   };
 }
 

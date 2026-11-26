@@ -22,3 +22,5 @@ certs/
 .env
 .env.*
 !.env.example
+.vite/
+

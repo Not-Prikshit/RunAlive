@@ -52,6 +52,7 @@ export function App() {
     rectHeight?: number;
     rectRotation?: number;
     polygonPoints?: Array<[number, number]>;
+    revealSeekersOnMap?: boolean;
   } | null>(null);
   const [isJournalOpen, setIsJournalOpen] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
@@ -90,6 +91,7 @@ export function App() {
     rectHeight?: number;
     rectRotation?: number;
     polygonPoints?: Array<[number, number]>;
+    revealSeekersOnMap?: boolean;
   }) => {
     setActiveGameId(params.gameId);
     setMatchPerimeter({
@@ -101,6 +103,7 @@ export function App() {
       rectHeight: params.rectHeight,
       rectRotation: params.rectRotation,
       polygonPoints: params.polygonPoints,
+      revealSeekersOnMap: params.revealSeekersOnMap ?? true,
     });
     setCurrentView('lobby');
   };

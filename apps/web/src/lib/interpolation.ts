@@ -233,7 +233,8 @@ export class PositionInterpolationEngine {
       });
     });
 
-    if (hasChanges || this.tracks.size > 0) {
+    // Only dispatch to visual subscribers when coordinates have genuinely moved
+    if (hasChanges) {
       this.listeners.forEach((fn) => fn(resultMap));
     }
   }

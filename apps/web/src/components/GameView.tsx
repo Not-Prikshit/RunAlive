@@ -42,6 +42,7 @@ interface GameViewProps {
     rectHeight?: number;
     rectRotation?: number;
     polygonPoints?: Array<[number, number]>;
+    revealSeekersOnMap?: boolean;
   } | null;
   onExit: () => void;
 }
@@ -72,6 +73,9 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
   const [roomCode, setRoomCode] = useState('------');
   const [operationName, setOperationName] = useState('CAMPUS SURVIVAL RUN');
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [revealSeekersOnMap, setRevealSeekersOnMap] = useState<boolean>(
+    () => perimeterConfig?.revealSeekersOnMap ?? true
+  );
 
   // Boundary & Perimeter State
   const [boundary, setBoundary] = useState<{
@@ -188,6 +192,41 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
     return s.length > 0 ? s.length : Math.max(1, seekers.length);
   }, [roster, seekers]);
 
+  // Ensure BOTH players are permanently visible on the map from initial load
+  const activeRunners = useMemo(() => {
+    const list = [...runners];
+    roster.forEach((p, idx) => {
+      if (p.role === 'RUNNER' && p.userId !== currentUserId && !list.some((r) => r.id === p.userId)) {
+        list.push({
+          id: p.userId,
+          lat: p.lat || boundary.lat + 0.00018 * (idx + 1),
+          lng: p.lon || boundary.lng + 0.00018 * (idx + 1),
+          role: 'RUNNER',
+          label: p.displayName || `HIDER #${idx + 1}`,
+          lastSeenAt: p.lastSeenAt || 'Awaiting Fix',
+        });
+      }
+    });
+    return list;
+  }, [runners, roster, currentUserId, boundary.lat, boundary.lng]);
+
+  const activeSeekers = useMemo(() => {
+    const list = [...seekers];
+    roster.forEach((p, idx) => {
+      if (p.role === 'SEEKER' && p.userId !== currentUserId && !list.some((s) => s.id === p.userId)) {
+        list.push({
+          id: p.userId,
+          lat: p.lat || boundary.lat - 0.00018 * (idx + 1),
+          lng: p.lon || boundary.lng - 0.00018 * (idx + 1),
+          role: 'SEEKER',
+          label: p.displayName || `HUNTER #${idx + 1}`,
+          lastSeenAt: p.lastSeenAt || 'Awaiting Fix',
+        });
+      }
+    });
+    return list;
+  }, [seekers, roster, currentUserId, boundary.lat, boundary.lng]);
+
   // Read authenticated user on mount
   useEffect(() => {
     try {
@@ -275,6 +314,7 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
           rectHeightMeters?: number;
           rectRotationDeg?: number;
           polygonPoints?: Array<[number, number]>;
+          revealSeekersOnMap?: boolean;
           roundEndsAt?: string | null;
           endsAt?: string | null;
           players?: PlayerSummary[];
@@ -286,6 +326,7 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
         setRoomCode(g.roomCode || 'XK92WP');
         setOperationName(g.name || 'CAMPUS SURVIVAL RUN');
         if (g.status) setStatus(g.status as any);
+        if (g.revealSeekersOnMap !== undefined) setRevealSeekersOnMap(g.revealSeekersOnMap);
 
         // Update Boundary
         setBoundary((prev) => ({
@@ -641,13 +682,26 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
           />
         </div>
 
-        {/* Right: GPS Telemetry & Notice Board Toggle */}
-        <div className="flex items-center space-x-1.5 sm:space-x-3">
+        {/* Right: GPS Telemetry, Seeker Visibility & Notice Board Toggle */}
+        <div className="flex items-center space-x-1.5 sm:space-x-2.5">
           {/* Live GPS Lock Pill */}
           <div className="hidden md:flex items-center space-x-1.5 bg-[#F0FDF4] dark:bg-[#064E3B] border-2 border-[#18181B] px-2.5 py-1.5 rounded-xl shadow-[2px_2px_0px_#18181B] text-[11px] font-mono font-bold text-[#16A34A] dark:text-[#86EFAC]">
             <Radio className={`w-3.5 h-3.5 text-[#16A34A] ${isTransmitting ? 'animate-ping' : 'animate-pulse'}`} />
             <span>GPS {userAccuracy}m • LIVE</span>
           </div>
+
+          {/* Seeker Visibility Toggle Button */}
+          <button
+            onClick={() => setRevealSeekersOnMap((prev) => !prev)}
+            className={`px-2 py-1.5 sm:px-2.5 sm:py-2 rounded-xl border-2 border-[#18181B] text-[10px] sm:text-xs font-heading font-black shadow-[2px_2px_0px_#18181B] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer flex items-center space-x-1 ${
+              revealSeekersOnMap
+                ? 'bg-[#E8F0FE] text-[#2563EB] hover:bg-[#DBEAFE]'
+                : 'bg-[#FEE2E2] text-[#EF4444] hover:bg-[#FCA5A5]'
+            }`}
+            title="Toggle whether Seekers are visible or hidden on Hider radar"
+          >
+            <span>{revealSeekersOnMap ? '👁️ SEEKERS: ON' : '🕶️ SEEKERS: OFF'}</span>
+          </button>
 
           {/* Notice Board Toggle Button */}
           <button
@@ -693,8 +747,8 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
           rectRotationDeg={boundary.rectRotation || 0}
           polygonPoints={boundary.polygonPoints || []}
           userPos={userPos}
-          runners={runners}
-          seekers={seekers}
+          runners={activeRunners}
+          seekers={role === PlayerRole.SEEKER || revealSeekersOnMap ? activeSeekers : []}
           showLocateButton={true}
           className="w-full h-full"
         />

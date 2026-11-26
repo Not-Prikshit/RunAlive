@@ -129,6 +129,7 @@ gamesRouter.post(
       const rectHeightMeters = Number(body.rectHeight ?? body.rectHeightMeters ?? 600);
       const rectRotationDeg = Number(body.rectRotation ?? body.rectRotationDeg ?? 0);
       const polygonPoints = Array.isArray(body.polygonPoints) ? body.polygonPoints : [];
+      const revealSeekersOnMap = body.revealSeekersOnMap !== undefined ? Boolean(body.revealSeekersOnMap) : true;
 
       gamesService.setGamePerimeter(game.id, {
         shape,
@@ -136,6 +137,7 @@ gamesRouter.post(
         rectHeightMeters,
         rectRotationDeg,
         polygonPoints,
+        revealSeekersOnMap,
       });
 
       res.status(201).json({
@@ -147,6 +149,7 @@ gamesRouter.post(
         rectHeightMeters,
         rectRotationDeg,
         polygonPoints,
+        revealSeekersOnMap,
       });
     } catch (err: any) {
       if (
@@ -573,6 +576,7 @@ gamesRouter.put(
     const rectHeightMeters = Number(body.rectHeight ?? body.rectHeightMeters ?? 600);
     const rectRotationDeg = Number(body.rectRotation ?? body.rectRotationDeg ?? 0);
     const polygonPoints = Array.isArray(body.polygonPoints) ? body.polygonPoints : [];
+    const revealSeekersOnMap = body.revealSeekersOnMap !== undefined ? Boolean(body.revealSeekersOnMap) : true;
 
     gamesService.setGamePerimeter(gameId, {
       shape,
@@ -580,8 +584,9 @@ gamesRouter.put(
       rectHeightMeters,
       rectRotationDeg,
       polygonPoints,
+      revealSeekersOnMap,
     });
-    res.status(200).json({ success: true, shape, rectWidthMeters, rectHeightMeters, rectRotationDeg, polygonPoints });
+    res.status(200).json({ success: true, shape, rectWidthMeters, rectHeightMeters, rectRotationDeg, polygonPoints, revealSeekersOnMap });
   })
 );
 

@@ -24,7 +24,8 @@ import {
   Flame,
   Zap,
 } from 'lucide-react';
-import { MapplsMap, type PerimeterShape } from './MapplsMap';
+import { MapplsMap, type PerimeterShape, type MapMarker } from './MapplsMap';
+import { connectSocket } from '../lib/socket';
 
 interface TacticalMapRoomProps {
   gameId?: string | null;
@@ -40,6 +41,7 @@ interface TacticalMapRoomProps {
     rectHeight?: number;
     rectRotation?: number;
     polygonPoints?: Array<[number, number]>;
+    revealSeekersOnMap?: boolean;
   }) => void;
 }
 
@@ -68,6 +70,12 @@ export const TacticalMapRoom: React.FC<TacticalMapRoomProps> = React.memo(({
   const [rectRotation, setRectRotation] = useState(0);
   const [polygonPoints, setPolygonPoints] = useState<Array<[number, number]>>([]);
   const [isDrawingPolygon, setIsDrawingPolygon] = useState(false);
+  const [revealSeekersOnMap, setRevealSeekersOnMap] = useState<boolean>(true);
+
+  // Players live radar in Host workstation
+  const [runners, setRunners] = useState<MapMarker[]>([]);
+  const [seekers, setSeekers] = useState<MapMarker[]>([]);
+  const [hostGpsPos, setHostGpsPos] = useState<[number, number] | null>(null);
 
   const [isLocating, setIsLocating] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
@@ -86,6 +94,7 @@ export const TacticalMapRoom: React.FC<TacticalMapRoomProps> = React.memo(({
         const userLng = Number(pos.coords.longitude.toFixed(5));
         setLat(userLat);
         setLng(userLng);
+        setHostGpsPos([userLat, userLng]);
         setIsLocating(false);
         setNotification('Center pinned to your live GPS coordinates.');
       },
@@ -100,6 +109,60 @@ export const TacticalMapRoom: React.FC<TacticalMapRoomProps> = React.memo(({
   useEffect(() => {
     handleGPSCenter();
   }, []);
+
+  // Sync game players and peer locations when gameId is provided
+  useEffect(() => {
+    if (!gameId) return;
+    let mounted = true;
+
+    api.get<{ game: any }>(`/games/${gameId}`).then((res) => {
+      if (!mounted || !res?.game?.players) return;
+      const rM: MapMarker[] = [];
+      const sM: MapMarker[] = [];
+      res.game.players.forEach((p: any) => {
+        if (p.lat && p.lon) {
+          const m: MapMarker = {
+            id: p.userId,
+            lat: p.lat,
+            lng: p.lon,
+            role: p.role,
+            label: p.displayName || (p.role === 'SEEKER' ? 'SEEKER' : 'HIDER'),
+            lastSeenAt: p.lastSeenAt,
+          };
+          if (p.role === 'SEEKER') sM.push(m);
+          else rM.push(m);
+        }
+      });
+      if (rM.length > 0) setRunners(rM);
+      if (sM.length > 0) setSeekers(sM);
+    }).catch(() => {});
+
+    const socket = connectSocket();
+    socket.emit('game:join', { gameId });
+
+    const onLoc = (data: any) => {
+      if (!data?.userId) return;
+      const m: MapMarker = {
+        id: data.userId,
+        lat: data.lat,
+        lng: data.lng,
+        role: data.role === 'SEEKER' ? 'SEEKER' : 'RUNNER',
+        label: data.role === 'SEEKER' ? 'SEEKER' : 'HIDER',
+        lastSeenAt: new Date().toLocaleTimeString(),
+      };
+      if (data.role === 'SEEKER') {
+        setSeekers((prev) => [...prev.filter((s) => s.id !== data.userId), m]);
+      } else {
+        setRunners((prev) => [...prev.filter((r) => r.id !== data.userId), m]);
+      }
+    };
+
+    socket.on('player:location', onLoc);
+    return () => {
+      mounted = false;
+      socket.off('player:location', onLoc);
+    };
+  }, [gameId]);
 
   // Calculate estimated playing area in km²
   const estimatedAreaKm2 = useMemo(() => {
@@ -149,6 +212,7 @@ export const TacticalMapRoom: React.FC<TacticalMapRoomProps> = React.memo(({
           rectHeight,
           rectRotation,
           polygonPoints: shape === 'POLYGON' ? polygonPoints : undefined,
+          revealSeekersOnMap,
         });
         createdGameId = res.game?.id || res.id || res.gameId;
       } else {
@@ -158,6 +222,7 @@ export const TacticalMapRoom: React.FC<TacticalMapRoomProps> = React.memo(({
           rectHeight,
           rectRotation,
           polygonPoints: shape === 'POLYGON' ? polygonPoints : undefined,
+          revealSeekersOnMap,
         }).catch(() => {});
       }
 
@@ -176,6 +241,7 @@ export const TacticalMapRoom: React.FC<TacticalMapRoomProps> = React.memo(({
         rectHeight,
         rectRotation,
         polygonPoints: shape === 'POLYGON' ? polygonPoints : undefined,
+        revealSeekersOnMap,
       });
     } catch (err: any) {
       setNotification(err.message || 'Failed to initialize match configuration.');
@@ -345,7 +411,9 @@ export const TacticalMapRoom: React.FC<TacticalMapRoomProps> = React.memo(({
             polygonPoints={polygonPoints}
             onPolygonPointsChange={setPolygonPoints}
             isDrawingPolygon={isDrawingPolygon}
-            userPos={[lat, lng]}
+            userPos={hostGpsPos || [lat, lng]}
+            runners={runners}
+            seekers={seekers}
             className="w-full h-[460px] sm:h-[560px] rounded-xl border-2 border-[#18181B] dark:border-[#475569]"
             onMapClick={(clickedLat, clickedLng) => {
               if (shape === 'POLYGON') {
@@ -687,6 +755,33 @@ export const TacticalMapRoom: React.FC<TacticalMapRoomProps> = React.memo(({
                   <div
                     className={`w-4 h-4 rounded-full bg-white border border-[#18181B] shadow-sm absolute top-1 transition-transform ${
                       allowTeamSwitching ? 'left-6' : 'left-1'
+                    }`}
+                  />
+                </button>
+              </div>
+            </div>
+
+            {/* Reveal Seekers Location Toggle (User Request) */}
+            <div className="pt-2 border-t-2 border-dashed border-[#CBD5E1] dark:border-[#475569]">
+              <div className="flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-heading font-bold text-[#18181B] dark:text-[#F8FAFC] block">
+                    Reveal Seekers on Map
+                  </span>
+                  <span className="text-[10px] text-[#64748B] dark:text-[#94A3B8]">
+                    {revealSeekersOnMap ? 'Seekers visible to Hiders' : 'Stealth Mode: Seekers hidden on map'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setRevealSeekersOnMap(!revealSeekersOnMap)}
+                  className={`w-12 h-7 rounded-full border-2 border-[#18181B] dark:border-[#475569] transition-colors relative cursor-pointer ${
+                    revealSeekersOnMap ? 'bg-[#EA4335]' : 'bg-[#E2E8F0] dark:bg-[#334155]'
+                  }`}
+                >
+                  <div
+                    className={`w-4 h-4 rounded-full bg-white border border-[#18181B] shadow-sm absolute top-1 transition-transform ${
+                      revealSeekersOnMap ? 'left-6' : 'left-1'
                     }`}
                   />
                 </button>
