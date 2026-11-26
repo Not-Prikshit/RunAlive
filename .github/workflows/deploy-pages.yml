@@ -39,6 +39,8 @@ jobs:
       - name: Build Web App
         env:
           VITE_MAPPLS_API_KEY: yxoqjxblcaotpqyustvqwkjtwzntbrdjxbfn
+          VITE_API_URL: https://runalive.onrender.com/api/v1
+          VITE_WS_URL: https://runalive.onrender.com
         run: pnpm --filter @runalive/web build
 
       - name: Upload artifact

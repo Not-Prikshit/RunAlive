@@ -12,17 +12,15 @@ const connectionString =
     ? (config.DATABASE_URL_TEST ?? config.DATABASE_URL)
     : config.DATABASE_URL;
 
-// Detect Supabase connections
-const isSupabase = connectionString.includes('.supabase.com');
+// Enable SSL for remote cloud databases (Supabase, Neon, Render Postgres)
+const isRemote =
+  !connectionString.includes('localhost') &&
+  !connectionString.includes('127.0.0.1') &&
+  !connectionString.includes('postgres:5432');
 
-// Load Supabase CA certificate
-const sslConfig = isSupabase
+const sslConfig = isRemote
   ? {
-      ca: readFileSync(
-        new URL('../../certs/supabase-ca.crt', import.meta.url),
-        'utf8'
-      ),
-      rejectUnauthorized: true,
+      rejectUnauthorized: false,
     }
   : undefined;
 
