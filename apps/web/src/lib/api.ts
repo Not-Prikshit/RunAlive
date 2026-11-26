@@ -7,11 +7,11 @@ const isLocalhost =
 
 export const API_URL =
   import.meta.env.VITE_API_URL ||
-  (isLocalhost ? 'http://localhost:3000/api/v1' : '');
+  (isLocalhost ? 'http://localhost:3000/api/v1' : 'https://runalive.onrender.com/api/v1');
 
 export const WS_URL =
   import.meta.env.VITE_WS_URL ||
-  (isLocalhost ? 'http://localhost:3000' : '');
+  (isLocalhost ? 'http://localhost:3000' : 'https://runalive.onrender.com');
 
 interface RequestOptions extends RequestInit {
   timeoutMs?: number;
@@ -48,9 +48,6 @@ class ApiClient {
   }
 
   async request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
-    if (!API_URL) {
-      throw new Error('Backend server is not configured for this static deployment.');
-    }
     const { timeoutMs = 8000, retries = 2, ...fetchOptions } = options;
     const url = `${API_URL}${endpoint}`;
     const method = (fetchOptions.method || 'GET').toUpperCase();
