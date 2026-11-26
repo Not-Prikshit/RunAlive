@@ -6,10 +6,31 @@ interface DangerMeterProps {
   band: DangerBand;
   level: number; // 0 - 100
   distance?: number;
+  isOutsideZone?: boolean;
+  distanceToZoneM?: number;
 }
 
-export const DangerMeter: React.FC<DangerMeterProps> = React.memo(({ band, level }) => {
+export const DangerMeter: React.FC<DangerMeterProps> = React.memo(({
+  band,
+  level,
+  distance,
+  isOutsideZone = false,
+  distanceToZoneM,
+}) => {
   const getBandConfig = (b: DangerBand) => {
+    if (isOutsideZone) {
+      return {
+        color: '#DC2626',
+        bg: '#FEE2E2',
+        border: '#DC2626',
+        label: 'OUTSIDE SAFE ZONE // RELOCATE IMMEDIATELY!',
+        desc: distanceToZoneM
+          ? `${Math.round(distanceToZoneM)}M OUT OF BOUNDS • 60S RELOCATION GRACE`
+          : 'OUT OF BOUNDS • RELOCATE INSIDE PERIMETER',
+        bars: 5,
+      };
+    }
+
     switch (b) {
       case DangerBand.CRITICAL:
         return {
@@ -17,7 +38,7 @@ export const DangerMeter: React.FC<DangerMeterProps> = React.memo(({ band, level
           bg: '#FCE8E6',
           border: '#EA4335',
           label: 'CRITICAL HAZARD // SEEKER ADJACENT!',
-          desc: 'DISTANCE < 50M • SEEK COVER IMMEDIATELY!',
+          desc: distance ? `DISTANCE ${Math.round(distance)}M • SEEK COVER IMMEDIATELY!` : 'DISTANCE < 50M • SEEK COVER IMMEDIATELY!',
           bars: 5,
         };
       case DangerBand.HIGH:
@@ -26,7 +47,7 @@ export const DangerMeter: React.FC<DangerMeterProps> = React.memo(({ band, level
           bg: '#FEEFE3',
           border: '#FA7B17',
           label: 'HIGH THREAT // PURSUIT VECTOR ENGAGED',
-          desc: 'DISTANCE 50M - 100M • DANGER ZONE CLOSING',
+          desc: distance ? `DISTANCE ${Math.round(distance)}M • DANGER ZONE CLOSING` : 'DISTANCE 50M - 100M • DANGER ZONE CLOSING',
           bars: 4,
         };
       case DangerBand.MEDIUM:
@@ -35,7 +56,7 @@ export const DangerMeter: React.FC<DangerMeterProps> = React.memo(({ band, level
           bg: '#FEF7E0',
           border: '#FBBC04',
           label: 'ELEVATED RADAR // SEEKER IN SECTOR',
-          desc: 'DISTANCE 100M - 150M • EXERCISE CAUTION',
+          desc: distance ? `DISTANCE ${Math.round(distance)}M • EXERCISE CAUTION` : 'DISTANCE 100M - 150M • EXERCISE CAUTION',
           bars: 3,
         };
       case DangerBand.LOW:
@@ -44,7 +65,7 @@ export const DangerMeter: React.FC<DangerMeterProps> = React.memo(({ band, level
           bg: '#E8F0FE',
           border: '#4285F4',
           label: 'PERIPHERAL TRACE // LOW RISK',
-          desc: 'DISTANCE 150M - 300M • MAINTAIN POSITION',
+          desc: distance ? `DISTANCE ${Math.round(distance)}M • MAINTAIN POSITION` : 'DISTANCE 150M - 300M • MAINTAIN POSITION',
           bars: 2,
         };
       case DangerBand.SAFE:
@@ -54,7 +75,7 @@ export const DangerMeter: React.FC<DangerMeterProps> = React.memo(({ band, level
           bg: '#E6F4EA',
           border: '#34A853',
           label: 'ALL CLEAR // SECTOR SECURE',
-          desc: 'DISTANCE > 300M • ZERO THREAT DETECTED',
+          desc: distance ? `NEAREST THREAT > ${Math.round(distance)}M • ZERO PROXIMITY RISK` : 'DISTANCE > 300M • ZERO THREAT DETECTED',
           bars: 1,
         };
     }

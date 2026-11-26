@@ -192,40 +192,53 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
     return s.length > 0 ? s.length : Math.max(1, seekers.length);
   }, [roster, seekers]);
 
-  // Ensure BOTH players are permanently visible on the map from initial load
+  // Active Runners with Authoritative GPS Fixes
   const activeRunners = useMemo(() => {
     const list = [...runners];
     roster.forEach((p, idx) => {
-      if (p.role === 'RUNNER' && p.userId !== currentUserId && !list.some((r) => r.id === p.userId)) {
-        list.push({
-          id: p.userId,
-          lat: p.lat || boundary.lat + 0.00018 * (idx + 1),
-          lng: p.lon || boundary.lng + 0.00018 * (idx + 1),
-          role: 'RUNNER',
-          label: p.displayName || `HIDER #${idx + 1}`,
-          lastSeenAt: p.lastSeenAt || 'Awaiting Fix',
-        });
+      if (
+        p.role === 'RUNNER' &&
+        p.userId !== currentUserId &&
+        !list.some((r) => r.id === p.userId)
+      ) {
+        if (p.lat && p.lon) {
+          list.push({
+            id: p.userId,
+            lat: p.lat,
+            lng: p.lon,
+            role: 'RUNNER',
+            label: p.displayName || `HIDER #${idx + 1}`,
+            lastSeenAt: p.lastSeenAt || 'Live',
+          });
+        }
       }
     });
     return list;
-  }, [runners, roster, currentUserId, boundary.lat, boundary.lng]);
+  }, [runners, roster, currentUserId]);
 
+  // Active Seekers with Authoritative GPS Fixes
   const activeSeekers = useMemo(() => {
     const list = [...seekers];
     roster.forEach((p, idx) => {
-      if (p.role === 'SEEKER' && p.userId !== currentUserId && !list.some((s) => s.id === p.userId)) {
-        list.push({
-          id: p.userId,
-          lat: p.lat || boundary.lat - 0.00018 * (idx + 1),
-          lng: p.lon || boundary.lng - 0.00018 * (idx + 1),
-          role: 'SEEKER',
-          label: p.displayName || `HUNTER #${idx + 1}`,
-          lastSeenAt: p.lastSeenAt || 'Awaiting Fix',
-        });
+      if (
+        (p.role === 'SEEKER' || p.role === 'HOST') &&
+        p.userId !== currentUserId &&
+        !list.some((s) => s.id === p.userId)
+      ) {
+        if (p.lat && p.lon) {
+          list.push({
+            id: p.userId,
+            lat: p.lat,
+            lng: p.lon,
+            role: 'SEEKER',
+            label: p.displayName || `HUNTER #${idx + 1}`,
+            lastSeenAt: p.lastSeenAt || 'Live',
+          });
+        }
       }
     });
     return list;
-  }, [seekers, roster, currentUserId, boundary.lat, boundary.lng]);
+  }, [seekers, roster, currentUserId]);
 
   // Read authenticated user on mount
   useEffect(() => {
@@ -517,14 +530,33 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
     };
   }, [gameId, addNoticeEvent]);
 
+  // Perimeter safe-zone boundary containment
+  const isOutsideZone = useMemo(() => {
+    if (!userPos) return false;
+    if (boundary.shape === 'CIRCLE') {
+      const d = calculateDistanceM(userPos[0], userPos[1], boundary.lat, boundary.lng);
+      return d > boundary.radius;
+    }
+    return false;
+  }, [userPos, boundary]);
+
+  const distanceToBoundaryM = useMemo(() => {
+    if (!userPos) return 0;
+    if (boundary.shape === 'CIRCLE') {
+      const d = calculateDistanceM(userPos[0], userPos[1], boundary.lat, boundary.lng);
+      return Math.max(0, d - boundary.radius);
+    }
+    return 0;
+  }, [userPos, boundary]);
+
   // Client-Side Real-Time Distance Calculation & Responsive Danger Engine
   useEffect(() => {
     if (!userPos) return;
 
     if (role === PlayerRole.RUNNER) {
-      if (seekers.length > 0) {
+      if (activeSeekers.length > 0) {
         let minDist = Infinity;
-        seekers.forEach((s) => {
+        activeSeekers.forEach((s) => {
           const d = calculateDistanceM(userPos[0], userPos[1], s.lat, s.lng);
           if (d < minDist) minDist = d;
         });
@@ -549,9 +581,9 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
       }
     } else {
       // Role is SEEKER: track nearest runner
-      if (runners.length > 0) {
+      if (activeRunners.length > 0) {
         let minDist = Infinity;
-        runners.forEach((r) => {
+        activeRunners.forEach((r) => {
           const d = calculateDistanceM(userPos[0], userPos[1], r.lat, r.lng);
           if (d < minDist) minDist = d;
         });
@@ -560,7 +592,7 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
         setNearestRunnerDist(null);
       }
     }
-  }, [userPos, seekers, runners, role]);
+  }, [userPos, activeSeekers, activeRunners, role]);
 
   // Callback for Shrink Trigger from HUD Timer
   const handleShrinkTriggered = useCallback(() => {
@@ -861,7 +893,13 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
                       {danger.band} • {nearestSeekerDist !== null ? `${nearestSeekerDist}m AWAY` : 'CLEAR'}
                     </span>
                   </div>
-                  <DangerMeter band={danger.band} level={danger.level} />
+                  <DangerMeter
+                    band={danger.band}
+                    level={danger.level}
+                    distance={nearestSeekerDist ?? undefined}
+                    isOutsideZone={isOutsideZone}
+                    distanceToZoneM={distanceToBoundaryM}
+                  />
                 </div>
               ) : (
                 <div className="space-y-1.5">

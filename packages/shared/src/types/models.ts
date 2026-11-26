@@ -10,6 +10,7 @@ import type {
   DangerBand,
   CatchReportStatus,
   GameWinner,
+  PartyStatus,
 } from './enums.js';
 
 export interface UserProfile {
@@ -136,4 +137,53 @@ export interface ParticipationRecord {
   catchesMade: number;
   wasDisqualified: boolean;
   playedAt: string;
+}
+
+export interface PartyMemberSummary {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  role: PlayerRole;
+  isReady: boolean;
+  isConnected: boolean;
+  isHost: boolean;
+  joinedAt: string;
+}
+
+export interface PartySummary {
+  id: string;
+  partyCode: string;
+  leaderUserId: string;
+  status: PartyStatus;
+  maxMembers: number;
+  memberCount: number;
+  lockWhenMatchStarts: boolean;
+  revealSeekersOnMap: boolean;
+  activeMatchId: string | null;
+  members: PartyMemberSummary[];
+  createdAt: string;
+}
+
+export interface PartyChatMessage {
+  id: string;
+  partyId: string;
+  matchId?: string | null;
+  senderUserId: string;
+  senderDisplayName: string;
+  senderAvatarUrl: string | null;
+  senderRole?: PlayerRole;
+  message: string;
+  createdAt: string;
+}
+
+export interface PartyAnnouncement {
+  id: string;
+  partyId: string;
+  matchId?: string | null;
+  senderUserId?: string | null;
+  senderDisplayName?: string | null;
+  announcementType: 'SYSTEM' | 'HOST' | 'EVENT' | 'WARNING' | 'ELIMINATION';
+  message: string;
+  metadata?: Record<string, any>;
+  createdAt: string;
 }

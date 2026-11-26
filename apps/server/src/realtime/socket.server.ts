@@ -91,9 +91,40 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
              AND status NOT IN ('LEFT', 'KICKED')`,
           [s.userId]
         );
+        await query(
+          `UPDATE party_members SET is_connected = false
+           WHERE user_id = $1 AND left_at IS NULL`,
+          [s.userId]
+        );
       } catch (err) {
         logger.error({ err }, 'Error updating disconnect status');
       }
+    });
+
+    // party:join handler
+    socket.on('party:join', async (payload: { partyId: string }, ack) => {
+      try {
+        const partyId = payload?.partyId;
+        if (!partyId) return;
+        void socket.join(`party:${partyId}`);
+        await query(
+          `UPDATE party_members SET is_connected = true WHERE user_id = $1 AND party_id = $2`,
+          [s.userId, partyId]
+        );
+        typeof ack === 'function' && ack({ ok: true });
+      } catch (err) {
+        logger.error({ err, userId: s.userId }, 'Error in party:join');
+        typeof ack === 'function' && ack({ ok: false });
+      }
+    });
+
+    // party:leave handler
+    socket.on('party:leave', async (payload: { partyId: string }) => {
+      try {
+        if (payload?.partyId) {
+          void socket.leave(`party:${payload.partyId}`);
+        }
+      } catch {}
     });
 
     // game:join handler
@@ -132,6 +163,12 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
   });
 
   return io;
+}
+
+export function emitToParty<T>(partyId: string, event: string, data: T): void {
+  if (io) {
+    io.to(`party:${partyId}`).emit(event, data);
+  }
 }
 
 export function emitToGame<T>(gameId: string, event: string, data: T): void {

@@ -20,6 +20,7 @@ import { healthRouter } from './modules/health/health.router.js';
 import { authRouter } from './modules/auth/auth.router.js';
 import { meRouter } from './modules/users/me.router.js';
 import { gamesRouter } from './modules/games/games.router.js';
+import { partiesRouter } from './modules/parties/parties.router.js';
 
 // ─── Error types ──────────────────────────────────────────────────────────────
 export class AppError extends Error {
@@ -102,6 +103,7 @@ export function createApp() {
   app.use('/api/v1/auth', authRouter);
   app.use('/api/v1/me', meRouter);
   app.use('/api/v1/games', gamesRouter);
+  app.use('/api/v1/parties', partiesRouter);
 
   // ── Static Web Frontend (Single Unified Production / Preview Port) ─────────
   const candidates = [

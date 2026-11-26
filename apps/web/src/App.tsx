@@ -42,7 +42,9 @@ export function App() {
   }, []);
 
   const [currentView, setCurrentView] = useState<ViewMode>('terminal');
+  const [activePartyId, setActivePartyId] = useState<string | null>(null);
   const [activeGameId, setActiveGameId] = useState<string | null>(null);
+  const [isPartyHost, setIsPartyHost] = useState<boolean>(false);
   const [matchPerimeter, setMatchPerimeter] = useState<{
     lat: number;
     lng: number;
@@ -74,6 +76,19 @@ export function App() {
       </Suspense>
     );
   }
+
+  const handleEnterParty = (partyId: string, host: boolean) => {
+    setActivePartyId(partyId);
+    setIsPartyHost(host);
+    setCurrentView('lobby');
+  };
+
+  const handleStartMatch = (matchId?: string) => {
+    if (matchId) {
+      setActiveGameId(matchId);
+    }
+    setCurrentView('game');
+  };
 
   const handleJoinGame = (gameId: string) => {
     setActiveGameId(gameId);
@@ -118,7 +133,11 @@ export function App() {
             perimeterConfig={matchPerimeter}
             onExit={() => {
               setActiveGameId(null);
-              setCurrentView('terminal');
+              if (activePartyId) {
+                setCurrentView('lobby');
+              } else {
+                setCurrentView('terminal');
+              }
             }}
           />
         </Suspense>
@@ -197,6 +216,7 @@ export function App() {
               onJoinGame={handleJoinGame}
               onOpenPerimeterEditor={() => setCurrentView('map-room')}
               onOpenHistory={() => setCurrentView('history')}
+              onEnterParty={handleEnterParty}
             />
           )}
 
@@ -208,14 +228,16 @@ export function App() {
             />
           )}
 
-          {currentView === 'lobby' && activeGameId && (
+          {currentView === 'lobby' && (activePartyId || activeGameId) && (
             <TacticalLobby
-              gameId={activeGameId}
+              partyId={activePartyId || undefined}
+              gameId={activeGameId || undefined}
               currentUserId={user.id}
-              isHost={true}
-              onStartMatch={() => setCurrentView('game')}
+              isHost={isPartyHost}
+              onStartMatch={handleStartMatch}
               onOpenTacticalMap={() => setCurrentView('map-room')}
               onExit={() => {
+                setActivePartyId(null);
                 setActiveGameId(null);
                 setCurrentView('terminal');
               }}

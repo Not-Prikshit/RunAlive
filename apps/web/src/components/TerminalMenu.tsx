@@ -31,6 +31,7 @@ interface TerminalMenuProps {
   onJoinGame: (gameId: string) => void;
   onOpenPerimeterEditor: () => void;
   onOpenHistory: () => void;
+  onEnterParty?: (partyId: string, isHost: boolean) => void;
 }
 
 export const TerminalMenu: React.FC<TerminalMenuProps> = React.memo(({
@@ -38,6 +39,7 @@ export const TerminalMenu: React.FC<TerminalMenuProps> = React.memo(({
   onJoinGame,
   onOpenPerimeterEditor,
   onOpenHistory,
+  onEnterParty,
 }) => {
   const { user, logout, updateDisplayName } = useAuthStore();
   const [currentDisplayName, setCurrentDisplayName] = useState(user?.displayName || userDisplayName || 'Runner');
@@ -71,9 +73,31 @@ export const TerminalMenu: React.FC<TerminalMenuProps> = React.memo(({
     }
   }, []);
 
+  const handleHostParty = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await api.post<{ party: { id: string } }>('/parties', {
+        lockWhenMatchStarts: true,
+        revealSeekersOnMap: true,
+      });
+      if (res.party?.id) {
+        if (onEnterParty) {
+          onEnterParty(res.party.id, true);
+        } else {
+          onJoinGame(res.party.id);
+        }
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to create party room.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleJoin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const cleanCode = roomCode.trim().toUpperCase();
+    const cleanCode = roomCode.trim().toUpperCase().replace(/^RUN-?/i, '');
     if (!cleanCode || cleanCode.length < 4) {
       setError('Please enter a valid 6-character room code.');
       return;
@@ -81,21 +105,51 @@ export const TerminalMenu: React.FC<TerminalMenuProps> = React.memo(({
 
     setLoading(true);
     setError(null);
+
+    // 1. Try Party Join first (Party System waiting lobby)
     try {
-      const res = await api.post<any>('/games/join', {
-        roomCode: cleanCode,
-        locationConsentAt: new Date().toISOString(),
-        safetyConsentAccepted: true,
-        locationConsentAccepted: true,
+      const res = await api.post<{ party: { id: string } }>('/parties/join', {
+        partyCode: cleanCode,
       });
-      const targetId = res.gameId || res.id || res.game?.id;
-      if (targetId) {
-        onJoinGame(targetId);
-      } else {
-        throw new Error('Could not identify joined match room.');
+      if (res.party?.id) {
+        if (onEnterParty) {
+          onEnterParty(res.party.id, false);
+          return;
+        } else {
+          onJoinGame(res.party.id);
+          return;
+        }
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to enter match. Verify that the room code exists and is accepting players.');
+    } catch (partyErr: any) {
+      // If error is locked room, full, closed, or expired, reject cleanly
+      if (
+        partyErr.message &&
+        (partyErr.message.toLowerCase().includes('locked') ||
+          partyErr.message.toLowerCase().includes('full') ||
+          partyErr.message.toLowerCase().includes('closed') ||
+          partyErr.message.toLowerCase().includes('expired'))
+      ) {
+        setError(partyErr.message);
+        setLoading(false);
+        return;
+      }
+
+      // 2. Fallback to active game match join
+      try {
+        const gameRes = await api.post<any>('/games/join', {
+          roomCode: cleanCode,
+          locationConsentAt: new Date().toISOString(),
+          safetyConsentAccepted: true,
+          locationConsentAccepted: true,
+        });
+        const targetId = gameRes.gameId || gameRes.id || gameRes.game?.id;
+        if (targetId) {
+          onJoinGame(targetId);
+          return;
+        }
+      } catch (gameErr: any) {
+        setError(partyErr.message || gameErr.message || 'Party does not exist. Verify the room code.');
+      }
     } finally {
       setLoading(false);
     }
@@ -216,14 +270,23 @@ export const TerminalMenu: React.FC<TerminalMenuProps> = React.memo(({
             </div>
           </div>
 
-          <div className="pt-6">
+          <div className="pt-6 space-y-2.5">
             <button
-              onClick={onOpenPerimeterEditor}
+              onClick={handleHostParty}
+              disabled={loading}
               className="w-full py-3.5 comic-btn-primary text-xs sm:text-sm flex items-center justify-center space-x-2"
             >
-              <Sliders className="w-4 h-4" />
-              <span>CONFIGURE & HOST MATCH</span>
+              <Sparkles className="w-4 h-4 text-[#FBBC04]" />
+              <span>{loading ? 'CREATING LOBBY...' : 'HOST SQUAD PARTY'}</span>
               <ArrowRight className="w-4 h-4" />
+            </button>
+
+            <button
+              onClick={onOpenPerimeterEditor}
+              className="w-full py-2.5 comic-btn-white text-xs flex items-center justify-center space-x-1.5"
+            >
+              <Sliders className="w-3.5 h-3.5 text-[#2563EB]" />
+              <span>Configure Map & Perimeter First</span>
             </button>
           </div>
         </div>

@@ -11,6 +11,13 @@ export const GameStatus = {
 } as const;
 export type GameStatus = (typeof GameStatus)[keyof typeof GameStatus];
 
+export const PartyStatus = {
+  OPEN: 'OPEN',
+  CLOSED: 'CLOSED',
+  EXPIRED: 'EXPIRED',
+} as const;
+export type PartyStatus = (typeof PartyStatus)[keyof typeof PartyStatus];
+
 export const PlayerRole = {
   RUNNER: 'RUNNER',
   SEEKER: 'SEEKER',

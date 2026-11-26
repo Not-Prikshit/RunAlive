@@ -36,6 +36,15 @@ export const SocketEvent = {
   HOST_ALERT: 'host:alert',
   GAME_ENDED: 'game:ended',
 
+  // Party & Communication Events
+  PARTY_UPDATED: 'party:updated',
+  PARTY_MATCH_STARTED: 'party:match_started',
+  PARTY_MEMBER_LEFT: 'party:member_left',
+  PARTY_CHAT_MESSAGE: 'party:chat_message',
+  PARTY_ANNOUNCEMENT: 'party:announcement',
+  PARTY_CLOSED: 'party:closed',
+  PLAYER_LOCATION: 'player:location',
+
   // Client → Server
   GAME_SYNC: 'game:sync',
   LOBBY_READY: 'lobby:ready',
