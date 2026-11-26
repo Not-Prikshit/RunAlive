@@ -33,9 +33,14 @@ jobs:
           cache: 'pnpm'
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build Shared Package
+        run: pnpm --filter @runalive/shared build
 
       - name: Build Web App
+        env:
+          VITE_MAPPLS_API_KEY: yxoqjxblcaotpqyustvqwkjtwzntbrdjxbfn
         run: pnpm --filter @runalive/web build
 
       - name: Upload artifact
