@@ -33,8 +33,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         roundDurationMinutes: 15,
       });
       onJoinGame(res.game.id);
-    } catch {
-      onJoinGame(`demo-game-${Date.now().toString(36)}`);
+    } catch (err: any) {
+      setError(err.message || 'Failed to create game');
     } finally {
       setLoading(false);
     }
@@ -51,8 +51,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         locationConsentAccepted: true,
       });
       onJoinGame(res.gameId);
-    } catch {
-      onJoinGame(`demo-game-${roomCode.trim().toUpperCase()}`);
+    } catch (err: any) {
+      setError(err.message || 'Failed to join game');
     } finally {
       setLoading(false);
     }

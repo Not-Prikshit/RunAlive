@@ -44,52 +44,26 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   login: async (email, password) => {
-    try {
-      const data = await api.post<{ user: User; accessToken: string; refreshToken: string }>('/auth/login', {
-        email,
-        password,
-      });
-      localStorage.setItem('access_token', data.accessToken);
-      localStorage.setItem('refresh_token', data.refreshToken);
-      localStorage.setItem('runalive_user', JSON.stringify(data.user));
-      set({ user: data.user, token: data.accessToken, isLoading: false });
-    } catch {
-      // Seamless fallback for static client hosting (e.g. GitHub Pages without live backend)
-      const fallbackName = email.split('@')[0].toUpperCase();
-      const fallbackUser: User = {
-        id: `demo-user-${Date.now()}`,
-        email,
-        displayName: fallbackName || 'OPERATOR',
-      };
-      const fallbackToken = `demo_jwt_token_${Date.now()}`;
-      localStorage.setItem('access_token', fallbackToken);
-      localStorage.setItem('runalive_user', JSON.stringify(fallbackUser));
-      set({ user: fallbackUser, token: fallbackToken, isLoading: false });
-    }
+    const data = await api.post<{ user: User; accessToken: string; refreshToken: string }>('/auth/login', {
+      email,
+      password,
+    });
+    localStorage.setItem('access_token', data.accessToken);
+    localStorage.setItem('refresh_token', data.refreshToken);
+    localStorage.setItem('runalive_user', JSON.stringify(data.user));
+    set({ user: data.user, token: data.accessToken, isLoading: false });
   },
 
   register: async (email, password, displayName) => {
-    try {
-      const data = await api.post<{ user: User; accessToken: string; refreshToken: string }>('/auth/register', {
-        email,
-        password,
-        displayName,
-      });
-      localStorage.setItem('access_token', data.accessToken);
-      localStorage.setItem('refresh_token', data.refreshToken);
-      localStorage.setItem('runalive_user', JSON.stringify(data.user));
-      set({ user: data.user, token: data.accessToken, isLoading: false });
-    } catch {
-      const fallbackUser: User = {
-        id: `demo-user-${Date.now()}`,
-        email,
-        displayName: displayName || email.split('@')[0],
-      };
-      const fallbackToken = `demo_jwt_token_${Date.now()}`;
-      localStorage.setItem('access_token', fallbackToken);
-      localStorage.setItem('runalive_user', JSON.stringify(fallbackUser));
-      set({ user: fallbackUser, token: fallbackToken, isLoading: false });
-    }
+    const data = await api.post<{ user: User; accessToken: string; refreshToken: string }>('/auth/register', {
+      email,
+      password,
+      displayName,
+    });
+    localStorage.setItem('access_token', data.accessToken);
+    localStorage.setItem('refresh_token', data.refreshToken);
+    localStorage.setItem('runalive_user', JSON.stringify(data.user));
+    set({ user: data.user, token: data.accessToken, isLoading: false });
   },
 
   logout: () => {

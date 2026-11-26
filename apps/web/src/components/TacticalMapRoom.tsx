@@ -133,21 +133,16 @@ export const TacticalMapRoom: React.FC<TacticalMapRoomProps> = React.memo(({
       let createdGameId = gameId;
 
       if (!createdGameId) {
-        try {
-          const res = await api.post<any>('/games', {
-            name: matchName || 'Campus Tag Match',
-            boundaryCenterLat: lat,
-            boundaryCenterLng: lng,
-            boundaryRadiusMeters: radiusMeters,
-            totalRounds: totalRounds,
-            roundDurationMinutes: roundDurationMinutes,
-            maxPlayers: maxPlayers,
-          });
-          createdGameId = res.game?.id || res.id || res.gameId;
-        } catch {
-          // Instant demo match fallback when running as static client without backend
-          createdGameId = `demo-match-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-        }
+        const res = await api.post<any>('/games', {
+          name: matchName || 'Campus Tag Match',
+          boundaryCenterLat: lat,
+          boundaryCenterLng: lng,
+          boundaryRadiusMeters: radiusMeters,
+          totalRounds: totalRounds,
+          roundDurationMinutes: roundDurationMinutes,
+          maxPlayers: maxPlayers,
+        });
+        createdGameId = res.game?.id || res.id || res.gameId;
       }
 
       if (!createdGameId) {
