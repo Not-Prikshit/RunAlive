@@ -6,6 +6,10 @@ import helmet from 'helmet';
 import cors from 'cors';
 import path from 'node:path';
 import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 import { rateLimit } from 'express-rate-limit';
 import { config } from './config.js';
 import { logger } from './logger.js';
@@ -59,8 +63,7 @@ export function createApp() {
   app.use(
     cors({
       origin: (origin, callback) => {
-        // In development, allow local network device testing (e.g. mobile phones on Wi-Fi)
-        if (!origin || config.NODE_ENV !== 'production') {
+        if (!origin || config.NODE_ENV !== 'production' || origin.includes('onrender.com') || origin.includes('localhost')) {
           callback(null, true);
         } else {
           const allowed = config.CORS_ORIGINS.split(',').map((o) => o.trim());
@@ -104,17 +107,22 @@ export function createApp() {
   const candidates = [
     path.resolve(process.cwd(), 'apps/web/dist'),
     path.resolve(process.cwd(), '../web/dist'),
+    path.resolve(process.cwd(), '../../apps/web/dist'),
     path.resolve(process.cwd(), 'dist'),
+    path.resolve(__dirname, '../../web/dist'),
+    path.resolve(__dirname, '../../../apps/web/dist'),
   ];
   const webDistPath = candidates.find((dir) => fs.existsSync(path.join(dir, 'index.html')));
 
   if (webDistPath) {
+    logger.info({ webDistPath }, 'Serving unified production web frontend');
     app.use(express.static(webDistPath));
     app.get('*', (req: Request, res: Response, next: NextFunction) => {
       if (
         req.path.startsWith('/api') ||
         req.path.startsWith('/healthz') ||
-        req.path.startsWith('/health')
+        req.path.startsWith('/health') ||
+        req.path.startsWith('/socket.io')
       ) {
         return next();
       }

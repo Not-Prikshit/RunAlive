@@ -1,4 +1,5 @@
 const isBrowser = typeof window !== 'undefined';
+const origin = isBrowser ? window.location.origin : '';
 const isLocalhost =
   isBrowser &&
   (window.location.hostname === 'localhost' ||
@@ -7,11 +8,15 @@ const isLocalhost =
 
 export const API_URL =
   import.meta.env.VITE_API_URL ||
-  (isLocalhost ? 'http://localhost:3000/api/v1' : 'https://runalive.onrender.com/api/v1');
+  (isLocalhost
+    ? 'http://localhost:3000/api/v1'
+    : (origin && origin.includes('onrender.com') ? `${origin}/api/v1` : 'https://runalive.onrender.com/api/v1'));
 
 export const WS_URL =
   import.meta.env.VITE_WS_URL ||
-  (isLocalhost ? 'http://localhost:3000' : 'https://runalive.onrender.com');
+  (isLocalhost
+    ? 'http://localhost:3000'
+    : (origin && origin.includes('onrender.com') ? origin : 'https://runalive.onrender.com'));
 
 interface RequestOptions extends RequestInit {
   timeoutMs?: number;
