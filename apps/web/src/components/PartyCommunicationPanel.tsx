@@ -124,12 +124,47 @@ export const PartyCommunicationPanel: React.FC<PartyCommunicationPanelProps> = (
     socket.on(SocketEvent.PARTY_ANNOUNCEMENT, handleNewAnnouncement);
     socket.on('party:announcement', handleNewAnnouncement);
 
+    // Colyseus Authoritative Room Subscription
+    const room = colyseus.getCurrentRoom();
+    const handleStateChange = (state: any) => {
+      if (state.messages && state.messages.length > 0) {
+        setMessages((prev) => {
+          const existingIds = new Set(prev.map((m) => m.id));
+          const newMsgs: PartyChatMessage[] = [];
+          state.messages.forEach((m: any) => {
+            if (m.id && !existingIds.has(m.id) && !m.isAnnouncement) {
+              newMsgs.push({
+                id: m.id,
+                partyId: partyId,
+                matchId: matchId || partyId,
+                senderUserId: m.senderId,
+                senderDisplayName: m.senderName,
+                senderAvatarUrl: m.senderAvatarUrl || null,
+                senderRole: m.senderRole,
+                message: m.message,
+                createdAt: new Date(m.timestamp).toISOString(),
+              });
+            }
+          });
+          if (newMsgs.length === 0) return prev;
+          return [...prev, ...newMsgs];
+        });
+      }
+    };
+
+    if (room) {
+      room.onStateChange(handleStateChange);
+    }
+
     return () => {
       socket.off('connect', joinRooms);
       socket.off(SocketEvent.PARTY_CHAT_MESSAGE, handleNewMessage);
       socket.off('party:chat_message', handleNewMessage);
       socket.off(SocketEvent.PARTY_ANNOUNCEMENT, handleNewAnnouncement);
       socket.off('party:announcement', handleNewAnnouncement);
+      if (room) {
+        room.onStateChange.remove(handleStateChange);
+      }
     };
   }, [partyId, matchId, activeTab]);
 
@@ -153,6 +188,22 @@ export const PartyCommunicationPanel: React.FC<PartyCommunicationPanelProps> = (
 
     setIsSending(true);
     setChatInput('');
+
+    // Optimistic UI append for instant response
+    const optimisticId = 'opt-' + Date.now();
+    const optimisticMsg: PartyChatMessage = {
+      id: optimisticId,
+      partyId,
+      matchId: matchId || partyId,
+      senderUserId: currentUserId,
+      senderDisplayName: 'You',
+      senderAvatarUrl: null,
+      senderRole: isHost ? PlayerRole.HOST : PlayerRole.RUNNER,
+      message: clean,
+      createdAt: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, optimisticMsg]);
+
     try {
       // 1. Authoritative Colyseus real-time broadcast
       const room = colyseus.getCurrentRoom();
@@ -167,8 +218,9 @@ export const PartyCommunicationPanel: React.FC<PartyCommunicationPanelProps> = (
       });
       if (res?.chat) {
         setMessages((prev) => {
-          if (prev.some((m) => m.id === res.chat.id)) return prev;
-          return [...prev, res.chat];
+          const filtered = prev.filter((m) => m.id !== optimisticId);
+          if (filtered.some((m) => m.id === res.chat.id)) return filtered;
+          return [...filtered, res.chat];
         });
       }
     } catch (err: any) {

@@ -16,7 +16,10 @@ import {
   LocationFreshness,
   LocationRefreshTier,
   DangerBand,
+  SocketEvent,
 } from '@runalive/shared';
+import { emitToParty, emitToGame } from '../../realtime/socket.server.js';
+import { resolvePartyId } from '../../modules/parties/parties.service.js';
 
 export interface RoomAuthData {
   userId: string;
@@ -579,12 +582,33 @@ export class RunAliveRoom extends Room<{ state: GameRoomState }> {
         this.state.messages.shift();
       }
 
-      // Persist asynchronously
-      void query(
-        `INSERT INTO party_chat_messages (id, party_id, user_id, message, created_at)
-         VALUES ($1, $2, $3, $4, NOW())`,
-        [msg.id, this.state.sessionId, userId, msg.message]
-      ).catch(() => {});
+      // Synchronize with Socket.IO and persist to PostgreSQL
+      void (async () => {
+        try {
+          const actualPartyId = await resolvePartyId(this.state.sessionId);
+          const chatPayload = {
+            id: msg.id,
+            partyId: actualPartyId,
+            matchId: this.state.sessionId,
+            senderUserId: userId,
+            senderDisplayName: player.displayName,
+            senderRole: player.role,
+            message: msg.message,
+            createdAt: new Date(msg.timestamp).toISOString(),
+          };
+          emitToParty(actualPartyId, SocketEvent.PARTY_CHAT_MESSAGE, chatPayload);
+          emitToParty(this.state.sessionId, SocketEvent.PARTY_CHAT_MESSAGE, chatPayload);
+          emitToGame(this.state.sessionId, SocketEvent.PARTY_CHAT_MESSAGE, chatPayload);
+
+          await query(
+            `INSERT INTO party_chat_messages (id, party_id, match_id, sender_user_id, message, created_at)
+             VALUES ($1, $2, $3, $4, $5, NOW())`,
+            [msg.id, actualPartyId, this.state.sessionId, userId, msg.message]
+          );
+        } catch (err) {
+          logger.warn({ err }, 'Could not persist or broadcast chat message');
+        }
+      })();
     });
 
     // 9. Host priority announcement
@@ -602,6 +626,23 @@ export class RunAliveRoom extends Room<{ state: GameRoomState }> {
       msg.isAnnouncement = true;
 
       this.state.messages.push(msg);
+
+      void (async () => {
+        try {
+          const actualPartyId = await resolvePartyId(this.state.sessionId);
+          const annPayload = {
+            id: msg.id,
+            partyId: actualPartyId,
+            matchId: this.state.sessionId,
+            message: msg.message,
+            type: 'HOST',
+            createdAt: new Date(msg.timestamp).toISOString(),
+          };
+          emitToParty(actualPartyId, SocketEvent.PARTY_ANNOUNCEMENT, annPayload);
+          emitToParty(this.state.sessionId, SocketEvent.PARTY_ANNOUNCEMENT, annPayload);
+          emitToGame(this.state.sessionId, SocketEvent.PARTY_ANNOUNCEMENT, annPayload);
+        } catch {}
+      })();
     });
 
     // 10. Catch claim / verification

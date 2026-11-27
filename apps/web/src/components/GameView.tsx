@@ -127,8 +127,9 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
   const [shrinkCountdown, setShrinkCountdown] = useState<number>(180);
 
   // Notice Board & UI States
-  const [isNoticeBoardOpen, setIsNoticeBoardOpen] = useState(true);
+  const [isNoticeBoardOpen, setIsNoticeBoardOpen] = useState(false);
   const [isChatOpen, setIsChatOpen] = useState(false);
+  const [isDangerMeterMinimized, setIsDangerMeterMinimized] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
   const roomRef = useRef<any>(null);
   const [intelIntervalSec, setIntelIntervalSec] = useState<number>(10);
@@ -858,8 +859,10 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
           {/* Squad Chat Button */}
           <button
             onClick={() => {
-              setIsChatOpen((prev) => !prev);
-              if (!isChatOpen) setIsNoticeBoardOpen(false);
+              setIsChatOpen((prev) => {
+                if (!prev) setIsNoticeBoardOpen(false);
+                return !prev;
+              });
             }}
             className={`px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl border-2 border-[#18181B] text-xs font-heading font-black shadow-[2px_2px_0px_#18181B] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer flex items-center space-x-1.5 ${
               isChatOpen
@@ -873,7 +876,12 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
 
           {/* Notice Board Toggle Button */}
           <button
-            onClick={() => setIsNoticeBoardOpen((prev) => !prev)}
+            onClick={() => {
+              setIsNoticeBoardOpen((prev) => {
+                if (!prev) setIsChatOpen(false);
+                return !prev;
+              });
+            }}
             className={`px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl border-2 border-[#18181B] text-xs font-heading font-black shadow-[2px_2px_0px_#18181B] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer flex items-center space-x-1.5 ${
               isNoticeBoardOpen
                 ? 'bg-[#FBBC04] text-[#18181B]'
@@ -939,7 +947,7 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
 
         {/* ── Floating Tactical Notice Board (Expandable Comic Sketchbook Card) ── */}
         {isNoticeBoardOpen && (
-          <aside className="absolute top-3 right-3 sm:top-4 sm:right-4 z-30 w-72 sm:w-84 max-h-[calc(100%-80px)] flex flex-col comic-card bg-white dark:bg-[#1E293B] border-2 sm:border-[2.5px] border-[#18181B] dark:border-[#475569] shadow-[5px_5px_0px_#18181B] dark:shadow-[5px_5px_0px_#020617] rounded-2xl overflow-hidden animate-in fade-in slide-in-from-right-4 duration-150">
+          <aside className="fixed sm:absolute inset-x-3 sm:inset-x-auto top-14 sm:top-3 sm:right-3 z-40 w-auto sm:w-84 max-h-[calc(100vh-170px)] sm:max-h-[calc(100%-140px)] flex flex-col comic-card bg-white dark:bg-[#1E293B] border-2 sm:border-[2.5px] border-[#18181B] dark:border-[#475569] shadow-[5px_5px_0px_#18181B] dark:shadow-[5px_5px_0px_#020617] rounded-2xl overflow-hidden animate-in fade-in slide-in-from-right-4 duration-150">
             {/* Notice Board Header */}
             <div className="bg-[#FAF8F5] dark:bg-[#0F172A] border-b-2 border-[#18181B] dark:border-[#475569] p-3 flex items-center justify-between">
               <div className="flex items-center space-x-2">
@@ -1021,7 +1029,7 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
 
         {/* ── Floating Live Squad Chat Panel ─────────────────────────────────── */}
         {isChatOpen && (
-          <aside className="absolute top-3 right-3 sm:top-4 sm:right-4 z-40 w-80 sm:w-96 h-[480px] max-h-[calc(100%-80px)] flex flex-col comic-card bg-white dark:bg-[#1E293B] border-2 sm:border-[2.5px] border-[#18181B] dark:border-[#475569] shadow-[5px_5px_0px_#18181B] dark:shadow-[5px_5px_0px_#020617] rounded-2xl overflow-hidden animate-in fade-in slide-in-from-right-4 duration-150">
+          <aside className="fixed sm:absolute inset-x-3 sm:inset-x-auto top-14 sm:top-3 sm:right-3 z-40 w-auto sm:w-96 h-[460px] max-h-[calc(100vh-170px)] sm:max-h-[calc(100%-140px)] flex flex-col comic-card bg-white dark:bg-[#1E293B] border-2 sm:border-[2.5px] border-[#18181B] dark:border-[#475569] shadow-[5px_5px_0px_#18181B] dark:shadow-[5px_5px_0px_#020617] rounded-2xl overflow-hidden animate-in fade-in slide-in-from-right-4 duration-150">
             <div className="bg-[#FAF8F5] dark:bg-[#0F172A] border-b-2 border-[#18181B] dark:border-[#475569] p-3 flex items-center justify-between">
               <div className="flex items-center space-x-2">
                 <MessageSquare className="w-4 h-4 text-[#2563EB]" />
@@ -1052,7 +1060,7 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
         <div className="absolute bottom-3 left-3 right-3 sm:bottom-4 sm:left-4 sm:right-4 z-30 pointer-events-none">
           <div className="max-w-3xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 pointer-events-auto">
             {/* Left: Dynamic Danger Meter (For Runners) or Proximity Tracker (For Seekers) */}
-            <div className="w-full sm:w-auto flex-1 comic-card bg-white dark:bg-[#1E293B] border-2 border-[#18181B] dark:border-[#475569] p-3 sm:p-3.5 shadow-[4px_4px_0px_#18181B] dark:shadow-[4px_4px_0px_#020617] rounded-2xl flex flex-col justify-center">
+            <div className="w-full sm:w-auto flex-1 comic-card bg-white dark:bg-[#1E293B] border-2 border-[#18181B] dark:border-[#475569] p-2.5 sm:p-3.5 shadow-[4px_4px_0px_#18181B] dark:shadow-[4px_4px_0px_#020617] rounded-2xl flex flex-col justify-center transition-all">
               {role === PlayerRole.RUNNER ? (
                 <div className="space-y-1.5">
                   <div className="flex items-center justify-between">
@@ -1060,27 +1068,39 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
                       <ShieldAlert className="w-3.5 h-3.5 text-[#EA4335]" />
                       <span>HUNTER DANGER METER</span>
                     </span>
-                    <span
-                      className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
-                        danger.band === DangerBand.CRITICAL
-                          ? 'bg-[#FEE2E2] text-[#EF4444] border-[#EF4444] animate-bounce'
-                          : danger.band === DangerBand.HIGH
-                          ? 'bg-[#FEF2F2] text-[#DC2626] border-[#DC2626]'
-                          : danger.band === DangerBand.MEDIUM
-                          ? 'bg-[#FEF7E0] text-[#D97706] border-[#D97706]'
-                          : 'bg-[#F0FDF4] text-[#16A34A] border-[#16A34A]'
-                      }`}
-                    >
-                      {danger.band} • {nearestSeekerDist !== null ? `${nearestSeekerDist}m AWAY` : 'CLEAR'}
-                    </span>
+                    <div className="flex items-center space-x-1.5">
+                      <span
+                        className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border ${
+                          danger.band === DangerBand.CRITICAL
+                            ? 'bg-[#FEE2E2] text-[#EF4444] border-[#EF4444] animate-bounce'
+                            : danger.band === DangerBand.HIGH
+                            ? 'bg-[#FEF2F2] text-[#DC2626] border-[#DC2626]'
+                            : danger.band === DangerBand.MEDIUM
+                            ? 'bg-[#FEF7E0] text-[#D97706] border-[#D97706]'
+                            : 'bg-[#F0FDF4] text-[#16A34A] border-[#16A34A]'
+                        }`}
+                      >
+                        {danger.band} • {nearestSeekerDist !== null ? `${nearestSeekerDist}m AWAY` : 'CLEAR'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsDangerMeterMinimized((m) => !m)}
+                        className="p-1 hover:bg-[#F1F5F9] dark:hover:bg-[#334155] rounded-md text-[#64748B] dark:text-[#94A3B8] transition cursor-pointer"
+                        title={isDangerMeterMinimized ? "Expand Danger Meter" : "Minimize Danger Meter"}
+                      >
+                        {isDangerMeterMinimized ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
                   </div>
-                  <DangerMeter
-                    band={danger.band}
-                    level={danger.level}
-                    distance={nearestSeekerDist ?? undefined}
-                    isOutsideZone={isOutsideZone}
-                    distanceToZoneM={distanceToBoundaryM}
-                  />
+                  {!isDangerMeterMinimized && (
+                    <DangerMeter
+                      band={danger.band}
+                      level={danger.level}
+                      distance={nearestSeekerDist ?? undefined}
+                      isOutsideZone={isOutsideZone}
+                      distanceToZoneM={distanceToBoundaryM}
+                    />
+                  )}
                 </div>
               ) : (
                 <div className="space-y-1.5">
@@ -1089,22 +1109,34 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
                       <Crosshair className="w-3.5 h-3.5 text-[#2563EB]" />
                       <span>HUNTER RADAR TARGETING</span>
                     </span>
-                    <span className="text-[10px] font-mono font-bold text-[#2563EB]">
-                      {nearestRunnerDist !== null ? `NEAREST HIDER: ${nearestRunnerDist}m` : 'SCANNING AIRSPACE...'}
-                    </span>
+                    <div className="flex items-center space-x-1.5">
+                      <span className="text-[10px] font-mono font-bold text-[#2563EB]">
+                        {nearestRunnerDist !== null ? `NEAREST HIDER: ${nearestRunnerDist}m` : 'SCANNING AIRSPACE...'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setIsDangerMeterMinimized((m) => !m)}
+                        className="p-1 hover:bg-[#F1F5F9] dark:hover:bg-[#334155] rounded-md text-[#64748B] dark:text-[#94A3B8] transition cursor-pointer"
+                        title={isDangerMeterMinimized ? "Expand Radar" : "Minimize Radar"}
+                      >
+                        {isDangerMeterMinimized ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
                   </div>
-                  <div className="w-full bg-[#E2E8F0] dark:bg-[#334155] h-3.5 rounded-full overflow-hidden border border-[#18181B]">
-                    <div
-                      className="h-full bg-gradient-to-r from-[#2563EB] to-[#EA4335] transition-all duration-300"
-                      style={{
-                        width: `${
-                          nearestRunnerDist !== null
-                            ? Math.min(100, Math.max(10, Math.round((1 - nearestRunnerDist / 200) * 100)))
-                            : 10
-                        }%`,
-                      }}
-                    />
-                  </div>
+                  {!isDangerMeterMinimized && (
+                    <div className="w-full bg-[#E2E8F0] dark:bg-[#334155] h-3.5 rounded-full overflow-hidden border border-[#18181B]">
+                      <div
+                        className="h-full bg-gradient-to-r from-[#2563EB] to-[#EA4335] transition-all duration-300"
+                        style={{
+                          width: `${
+                            nearestRunnerDist !== null
+                              ? Math.min(100, Math.max(10, Math.round((1 - nearestRunnerDist / 200) * 100)))
+                              : 10
+                          }%`,
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
