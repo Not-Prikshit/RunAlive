@@ -15,6 +15,9 @@ import {
   Alert,
   Dimensions,
   ActivityIndicator,
+  TextInput,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useLocalSearchParams, router } from 'expo-router';
@@ -22,6 +25,8 @@ import * as KeepAwake from 'expo-keep-awake';
 import { COLORS, SPACING, RADIUS, TOUCH_TARGET } from '@/design/tokens';
 import { api } from '@/lib/api';
 import { connectSocket } from '@/lib/socket';
+import { startTracking, stopTracking } from '@/lib/location';
+import { ChatModal } from '@/components/ChatModal';
 import { useAuthStore } from '@/stores/authStore';
 import {
   PlayerRole,
@@ -557,7 +562,8 @@ function ReportCatchModal({
 // ─── Main Screen ───────────────────────────────────────────────────────────────
 
 export default function GameScreen() {
-  const { gameId } = useLocalSearchParams<{ gameId: string }>();
+  const params = useLocalSearchParams<{ gameId?: string; activeGameId?: string }>();
+  const gameId = params.gameId ?? params.activeGameId ?? '';
   const currentUser = useAuthStore((s) => s.user);
 
   const [game, setGame] = useState<GameState | null>(null);
@@ -570,6 +576,7 @@ export default function GameScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [catchModalVisible, setCatchModalVisible] = useState(false);
   const [hostModalVisible, setHostModalVisible] = useState(false);
+  const [chatModalVisible, setChatModalVisible] = useState(false);
 
   const isHost = game?.hostUserId === currentUser?.id;
 
@@ -580,6 +587,15 @@ export default function GameScreen() {
       KeepAwake.deactivateKeepAwake();
     };
   }, []);
+
+  // Active match GPS location tracking for both Seekers and Runners
+  useEffect(() => {
+    if (!gameId) return;
+    void startTracking(gameId);
+    return () => {
+      void stopTracking();
+    };
+  }, [gameId]);
 
   // Load initial game state
   const loadGame = useCallback(async () => {
@@ -607,6 +623,16 @@ export default function GameScreen() {
       const me = allPlayers.find((p: PlayerSummary) => p.userId === currentUser.id);
       if (me) {
         setMyPlayer({ role: me.role, status: me.status });
+        if (me.role === PlayerRole.RUNNER) {
+          try {
+            const dangerRes = await api.get<{ danger: DangerState }>(`/games/${gameId}/danger`);
+            if (dangerRes.data?.danger) {
+              setDanger(dangerRes.data.danger);
+            }
+          } catch {
+            // Initial danger state not yet available, socket will update
+          }
+        }
       }
     } catch {
       // ignore, keep showing whatever state we have
@@ -619,10 +645,13 @@ export default function GameScreen() {
   useEffect(() => {
     if (!gameId || !currentUser) return;
     const socket = connectSocket();
+    socket.emit('game:join', { gameId });
 
     // Runner danger (only received by the runner themselves)
     socket.on(SocketEvent.RUNNER_DANGER, (payload: RunnerDangerPayload) => {
-      setDanger(payload.danger);
+      if (payload?.danger) {
+        setDanger(payload.danger);
+      }
     });
 
     // Seeker: runner snapshots
@@ -821,15 +850,24 @@ export default function GameScreen() {
           <Text style={styles.headerTitle}>RUN ALIVE</Text>
           <Text style={styles.headerCode}>R{game.currentRound}/{game.totalRounds}</Text>
         </View>
-        {isHost && (
+        <View style={{ flexDirection: 'row', gap: SPACING.sm, alignItems: 'center' }}>
           <TouchableOpacity
-            style={styles.hostBadgeBtn}
-            onPress={() => setHostModalVisible(true)}
+            style={styles.chatBadgeBtn}
+            onPress={() => setChatModalVisible(true)}
             activeOpacity={0.8}
           >
-            <Text style={styles.hostBadgeText}>👑 HOST MENU</Text>
+            <Text style={styles.chatBadgeText}>💬 CHAT</Text>
           </TouchableOpacity>
-        )}
+          {isHost && (
+            <TouchableOpacity
+              style={styles.hostBadgeBtn}
+              onPress={() => setHostModalVisible(true)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.hostBadgeText}>👑 HOST MENU</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
 
       {/* Role-specific content */}
@@ -950,6 +988,14 @@ export default function GameScreen() {
           </View>
         </Modal>
       )}
+
+      {/* Squad Chat Modal */}
+      <ChatModal
+        visible={chatModalVisible}
+        onClose={() => setChatModalVisible(false)}
+        gameId={gameId}
+        currentUserId={currentUser?.id}
+      />
     </SafeAreaView>
   );
 }
@@ -996,6 +1042,20 @@ const styles = StyleSheet.create({
   },
   hostBadgeText: {
     color: COLORS.host,
+    fontSize: 11,
+    fontWeight: '800',
+    letterSpacing: 1,
+  },
+  chatBadgeBtn: {
+    backgroundColor: 'rgba(255, 221, 0, 0.15)',
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderRadius: RADIUS.full,
+  },
+  chatBadgeText: {
+    color: COLORS.accent,
     fontSize: 11,
     fontWeight: '800',
     letterSpacing: 1,

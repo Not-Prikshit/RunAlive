@@ -8,7 +8,7 @@ import { haversineDistanceM } from '../locations/locations.service.js';
 
 export const EMA_ALPHA = 0.4;
 export const MAX_STALE_FIX_SECONDS = 60;
-export const KEEPALIVE_INTERVAL_SECONDS = 30;
+export const KEEPALIVE_INTERVAL_SECONDS = 5;
 
 export interface GpsFixWithAccuracy {
   lat: number;
@@ -259,9 +259,10 @@ export async function evaluateRunnerDanger(
     : Infinity;
 
   const shouldEmit =
+    !prevDanger ||
     prevBand !== newBand ||
     secondsSinceLastUpdate >= KEEPALIVE_INTERVAL_SECONDS ||
-    Math.abs((prevDanger?.level ?? 0) - newLevel) >= 5;
+    Math.abs((prevDanger?.level ?? 0) - newLevel) >= 1;
 
   if (shouldEmit) {
     emitToUser(runnerUserId, SocketEvent.RUNNER_DANGER, {

@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { api } from '../lib/api';
 import { connectSocket } from '../lib/socket';
+import { colyseus } from '../lib/colyseus';
 import { MapplsMap, type MapMarker, type PerimeterShape } from './MapplsMap';
 import { DangerMeter } from './DangerMeter';
 import { GameHudTimer } from './GameHudTimer';
+import { PartyCommunicationPanel } from './PartyCommunicationPanel';
 import {
   PlayerRole,
   DangerBand,
@@ -23,6 +25,7 @@ import {
   XCircle,
   Radio,
   Users,
+  MessageSquare,
   ShieldAlert,
   ChevronDown,
   ChevronUp,
@@ -125,7 +128,12 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
 
   // Notice Board & UI States
   const [isNoticeBoardOpen, setIsNoticeBoardOpen] = useState(true);
+  const [isChatOpen, setIsChatOpen] = useState(false);
   const [showExitConfirm, setShowExitConfirm] = useState(false);
+  const roomRef = useRef<any>(null);
+  const [intelIntervalSec, setIntelIntervalSec] = useState<number>(10);
+  const [intelTier, setIntelTier] = useState<string>('NORMAL');
+  const [hostAnnouncement, setHostAnnouncement] = useState<string | null>(null);
   const [events, setEvents] = useState<MatchNoticeEvent[]>([
     {
       id: 'init-1',
@@ -256,14 +264,14 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
     } catch {}
   }, []);
 
-  // Location transmission to authoritative backend
-  const transmitLocation = useCallback(() => {
+  // Continuous GPS Collection via watchPosition streaming to authoritative Colyseus backend
+  useEffect(() => {
     if (!navigator.geolocation) return;
 
-    setIsTransmitting(true);
-    navigator.geolocation.getCurrentPosition(
+    let lastBackupPost = 0;
+    const watchId = navigator.geolocation.watchPosition(
       (pos) => {
-        const { latitude, longitude, accuracy } = pos.coords;
+        const { latitude, longitude, accuracy, heading, speed } = pos.coords;
         const now = Date.now();
         const latFixed = Number(latitude.toFixed(6));
         const lonFixed = Number(longitude.toFixed(6));
@@ -274,37 +282,149 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
         setLastPingTime(new Date().toLocaleTimeString());
         setIsTransmitting(false);
 
-        // Format strictly matching LocationBatchSchema: { fixes: [...] }
-        api
-          .post(`/games/${gameId}/location`, {
-            fixes: [
-              {
-                lat: latFixed,
-                lon: lonFixed,
-                accuracyM: accM,
-                clientTs: now,
-                mocked: false,
-              },
-            ],
-          })
-          .catch((err) => {
-            console.warn('GPS location sync non-fatal err:', err);
+        // 1. Authoritative Colyseus real-time stream
+        if (roomRef.current) {
+          roomRef.current.send('player:location_update', {
+            latitude: latFixed,
+            longitude: lonFixed,
+            accuracy: accM,
+            heading: heading || 0,
+            speed: speed || 0,
+            timestamp: now,
           });
+        }
+
+        // 2. Periodic REST backup sync for DB logs
+        if (now - lastBackupPost >= 3500) {
+          lastBackupPost = now;
+          api
+            .post(`/games/${gameId}/location`, {
+              fixes: [
+                {
+                  lat: latFixed,
+                  lon: lonFixed,
+                  accuracyM: accM,
+                  clientTs: now,
+                  mocked: false,
+                },
+              ],
+            })
+            .catch(() => {});
+        }
       },
       (err) => {
-        console.warn('GPS ping failed:', err);
-        setIsTransmitting(false);
+        console.warn('GPS watch error:', err);
       },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 3000 }
+      { enableHighAccuracy: true, maximumAge: 1000, timeout: 10000 }
     );
+
+    return () => {
+      navigator.geolocation.clearWatch(watchId);
+    };
   }, [gameId]);
 
-  // Continuous high-frequency GPS ingestion loop (every 3.5s)
+  // Connect to Authoritative Colyseus Multiplayer Room
   useEffect(() => {
-    transmitLocation();
-    const interval = setInterval(transmitLocation, 3500);
-    return () => clearInterval(interval);
-  }, [transmitLocation]);
+    let mounted = true;
+
+    colyseus
+      .joinOrCreateGameRoom({
+        sessionId: gameId,
+        gameId,
+        role,
+      })
+      .then((room) => {
+        if (!mounted) return;
+        roomRef.current = room;
+
+        room.onStateChange((state: any) => {
+          if (!mounted) return;
+
+          // 1. Status & Timer Sync
+          if (state.status) setStatus(state.status);
+          if (state.locationRefreshIntervalSec) setIntelIntervalSec(state.locationRefreshIntervalSec);
+          if (state.locationRefreshTier) setIntelTier(state.locationRefreshTier);
+          if (state.timeRemainingSec !== undefined) setMatchRemainingSeconds(state.timeRemainingSec);
+
+          // 2. Safe-Zone Perimeter Sync
+          if (state.perimeter?.currentRadius) {
+            setBoundary((prev) => ({
+              ...prev,
+              lat: state.perimeter.centerLat || prev.lat,
+              lng: state.perimeter.centerLng || prev.lng,
+              radius: state.perimeter.currentRadius,
+            }));
+          }
+
+          // 3. Synchronize All Players & Freshness Markers
+          const newSeekers: MapMarker[] = [];
+          const newRunners: MapMarker[] = [];
+
+          if (state.players) {
+            state.players.forEach((player: any, pUserId: string) => {
+              const isMe = pUserId === currentUserId;
+              if (player.location?.latitude && player.location?.longitude) {
+                const marker: MapMarker = {
+                  id: pUserId,
+                  lat: player.location.latitude,
+                  lng: player.location.longitude,
+                  label: player.displayName || (player.role === 'SEEKER' ? 'HUNTER' : 'HIDER'),
+                  role: player.role,
+                  isCurrentUser: isMe,
+                  lastSeenAt: player.location.lastUpdatedAt ? new Date(player.location.lastUpdatedAt).toLocaleTimeString() : 'Live',
+                  accuracyMeters: player.location.accuracy || 10,
+                  freshness: player.location.freshness || 'LIVE',
+                };
+
+                if (player.role === 'SEEKER') {
+                  newSeekers.push(marker);
+                } else {
+                  newRunners.push(marker);
+                }
+              }
+
+              // 4. Server-Authoritative Danger Meter for Local Runner
+              if (isMe && player.danger) {
+                const dist = player.danger.effectiveDistance;
+                const band = (player.danger.band as DangerBand) || DangerBand.SAFE;
+                const level =
+                  dist <= 20 ? 100 : dist <= 50 ? 80 : dist <= 100 ? 60 : dist <= 200 ? 40 : 15;
+
+                setDanger({
+                  band,
+                  level,
+                });
+                if (dist < 9999) {
+                  setNearestSeekerDist(Math.round(dist));
+                }
+              }
+            });
+          }
+
+          if (newSeekers.length > 0) setSeekers(newSeekers);
+          if (newRunners.length > 0) setRunners(newRunners);
+
+          // 5. Host Announcements
+          if (state.messages && state.messages.length > 0) {
+            const last = state.messages[state.messages.length - 1];
+            if (last?.isAnnouncement) {
+              setHostAnnouncement(last.message);
+            }
+          }
+        });
+      })
+      .catch((err) => {
+        console.warn('Colyseus room connection in GameView notice:', err);
+      });
+
+    return () => {
+      mounted = false;
+      if (roomRef.current) {
+        roomRef.current.leave(false);
+        roomRef.current = null;
+      }
+    };
+  }, [gameId, role, currentUserId]);
 
   // Connect Realtime Socket & Synchronize Game Metadata
   useEffect(() => {
@@ -735,6 +855,22 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
             <span>{revealSeekersOnMap ? '👁️ SEEKERS: ON' : '🕶️ SEEKERS: OFF'}</span>
           </button>
 
+          {/* Squad Chat Button */}
+          <button
+            onClick={() => {
+              setIsChatOpen((prev) => !prev);
+              if (!isChatOpen) setIsNoticeBoardOpen(false);
+            }}
+            className={`px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-xl border-2 border-[#18181B] text-xs font-heading font-black shadow-[2px_2px_0px_#18181B] active:translate-x-0.5 active:translate-y-0.5 transition cursor-pointer flex items-center space-x-1.5 ${
+              isChatOpen
+                ? 'bg-[#2563EB] text-white'
+                : 'bg-white dark:bg-[#1E293B] text-[#18181B] dark:text-white hover:bg-[#EFF6FF]'
+            }`}
+          >
+            <MessageSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            <span className="hidden sm:inline">CHAT</span>
+          </button>
+
           {/* Notice Board Toggle Button */}
           <button
             onClick={() => setIsNoticeBoardOpen((prev) => !prev)}
@@ -762,6 +898,22 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
           </div>
           <button onClick={() => setNotification(null)} className="font-mono text-sm px-2 font-bold cursor-pointer">
             ✕
+          </button>
+        </div>
+      )}
+
+      {/* ── Host Priority Announcement (Colyseus Authoritative Stream) ─────────── */}
+      {hostAnnouncement && (
+        <div className="bg-[#EF4444] text-white border-b-2 border-[#18181B] px-4 py-2.5 text-xs sm:text-sm font-heading font-black flex items-center justify-between z-40 shrink-0 shadow-[0px_4px_10px_rgba(239,68,68,0.4)] animate-pulse">
+          <div className="flex items-center space-x-2.5">
+            <ShieldAlert className="w-5 h-5 shrink-0" />
+            <span>📢 {hostAnnouncement}</span>
+          </div>
+          <button
+            onClick={() => setHostAnnouncement(null)}
+            className="font-mono text-xs bg-black/30 hover:bg-black/50 px-2 py-1 rounded cursor-pointer"
+          >
+            DISMISS
           </button>
         </div>
       )}
@@ -863,6 +1015,35 @@ export const GameView: React.FC<GameViewProps> = React.memo(({ gameId, perimeter
             <div className="p-2.5 bg-[#FAF8F5] dark:bg-[#0F172A] border-t border-[#E2E8F0] dark:border-[#334155] text-[10px] font-mono text-[#64748B] dark:text-[#94A3B8] flex items-center justify-between">
               <span>Perimeter: {boundary.shape}</span>
               <span>Radius: {boundary.radius}m</span>
+            </div>
+          </aside>
+        )}
+
+        {/* ── Floating Live Squad Chat Panel ─────────────────────────────────── */}
+        {isChatOpen && (
+          <aside className="absolute top-3 right-3 sm:top-4 sm:right-4 z-40 w-80 sm:w-96 h-[480px] max-h-[calc(100%-80px)] flex flex-col comic-card bg-white dark:bg-[#1E293B] border-2 sm:border-[2.5px] border-[#18181B] dark:border-[#475569] shadow-[5px_5px_0px_#18181B] dark:shadow-[5px_5px_0px_#020617] rounded-2xl overflow-hidden animate-in fade-in slide-in-from-right-4 duration-150">
+            <div className="bg-[#FAF8F5] dark:bg-[#0F172A] border-b-2 border-[#18181B] dark:border-[#475569] p-3 flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <MessageSquare className="w-4 h-4 text-[#2563EB]" />
+                <h3 className="text-xs font-heading font-black text-[#18181B] dark:text-white uppercase tracking-wider">
+                  Live Squad Comms
+                </h3>
+              </div>
+              <button
+                onClick={() => setIsChatOpen(false)}
+                className="p-1 hover:bg-[#E2E8F0] dark:hover:bg-[#334155] rounded-lg text-xs font-bold text-[#64748B] cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-hidden">
+              <PartyCommunicationPanel
+                partyId={gameId}
+                currentUserId={currentUserId || ''}
+                isHost={role === PlayerRole.HOST}
+                matchId={gameId}
+                className="h-full border-none shadow-none"
+              />
             </div>
           </aside>
         )}

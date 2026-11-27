@@ -2,7 +2,7 @@
 import crypto from 'node:crypto';
 import { query, withTransaction } from '../../db/pool.js';
 import { AppError } from '../../app.js';
-import { emitToParty, emitToUser } from '../../realtime/socket.server.js';
+import { emitToParty, emitToGame, emitToUser } from '../../realtime/socket.server.js';
 import {
   PlayerRole,
   PartyStatus,
@@ -594,6 +594,51 @@ export async function startMatchFromParty(
 
 // ── Chat and Announcements ──────────────────────────────────────────────────
 
+export async function resolvePartyId(targetId: string): Promise<string> {
+  if (!targetId) return targetId;
+
+  try {
+    // 1. Check if targetId is an existing party
+    const { rows: partyRows } = await query<{ id: string }>(
+      'SELECT id FROM parties WHERE id = $1',
+      [targetId]
+    );
+    if (partyRows[0]) return partyRows[0].id;
+
+    // 2. Check if a party has active_match_id = targetId
+    const { rows: linkedPartyRows } = await query<{ id: string }>(
+      'SELECT id FROM parties WHERE active_match_id = $1 LIMIT 1',
+      [targetId]
+    );
+    if (linkedPartyRows[0]) return linkedPartyRows[0].id;
+
+    // 3. Check if targetId is an existing game
+    const { rows: gameRows } = await query<{ id: string; host_user_id: string; room_code: string }>(
+      'SELECT id, host_user_id, room_code FROM games WHERE id = $1',
+      [targetId]
+    );
+    if (gameRows[0]) {
+      const g = gameRows[0];
+      const { rows: createdParty } = await query<{ id: string }>(
+        `INSERT INTO parties (
+           party_code, leader_user_id, status, max_members,
+           lock_when_match_starts, reveal_seekers_on_map, active_match_id, settings
+         ) VALUES ($1, $2, 'OPEN', 16, false, true, $3, '{}')
+         ON CONFLICT (party_code) DO UPDATE SET active_match_id = EXCLUDED.active_match_id
+         RETURNING id`,
+        [g.room_code, g.host_user_id, g.id]
+      );
+      if (createdParty[0]) {
+        return createdParty[0].id;
+      }
+    }
+  } catch {
+    // If targetId is not a valid UUID or DB query fails, fallback
+  }
+
+  return targetId;
+}
+
 export async function postChatMessage(
   partyId: string,
   userId: string,
@@ -604,6 +649,9 @@ export async function postChatMessage(
   if (!cleanMessage || cleanMessage.length > 500) {
     throw new AppError('BAD_REQUEST', 'Message must be between 1 and 500 characters.', 400);
   }
+
+  const resolvedId = await resolvePartyId(partyId);
+  const effectiveMatchId = matchId || (partyId !== resolvedId ? partyId : null);
 
   const { rows } = await query<{
     id: string;
@@ -622,17 +670,18 @@ export async function postChatMessage(
        RETURNING *
      )
      SELECT i.id, i.party_id, i.match_id, i.sender_user_id, i.message, i.created_at,
-            u.display_name, u.avatar_url, COALESCE(pm.role, 'RUNNER') AS role
+            u.display_name, u.avatar_url, COALESCE(pm.role, gp.role, 'RUNNER') AS role
      FROM inserted i
      JOIN users u ON u.id = i.sender_user_id
-     LEFT JOIN party_members pm ON pm.party_id = i.party_id AND pm.user_id = i.sender_user_id`,
-    [partyId, matchId || null, userId, cleanMessage]
+     LEFT JOIN party_members pm ON pm.party_id = i.party_id AND pm.user_id = i.sender_user_id
+     LEFT JOIN game_players gp ON gp.game_id = i.match_id AND gp.user_id = i.sender_user_id`,
+    [resolvedId, effectiveMatchId, userId, cleanMessage]
   );
 
   const row = rows[0]!;
   const chatMsg: PartyChatMessage = {
     id: row.id,
-    partyId: row.party_id,
+    partyId: partyId,
     matchId: row.match_id,
     senderUserId: row.sender_user_id,
     senderDisplayName: row.display_name,
@@ -642,11 +691,18 @@ export async function postChatMessage(
     createdAt: row.created_at.toISOString(),
   };
 
-  emitToParty(partyId, SocketEvent.PARTY_CHAT_MESSAGE, chatMsg);
+  emitToParty(resolvedId, SocketEvent.PARTY_CHAT_MESSAGE, chatMsg);
+  if (partyId !== resolvedId) {
+    emitToParty(partyId, SocketEvent.PARTY_CHAT_MESSAGE, chatMsg);
+  }
+  if (effectiveMatchId) {
+    emitToGame(effectiveMatchId, SocketEvent.PARTY_CHAT_MESSAGE, chatMsg);
+  }
   return chatMsg;
 }
 
 export async function getChatHistory(partyId: string, limit = 50): Promise<PartyChatMessage[]> {
+  const resolvedId = await resolvePartyId(partyId);
   const { rows } = await query<{
     id: string;
     party_id: string;
@@ -659,19 +715,20 @@ export async function getChatHistory(partyId: string, limit = 50): Promise<Party
     role: PlayerRole;
   }>(
     `SELECT cm.id, cm.party_id, cm.match_id, cm.sender_user_id, cm.message, cm.created_at,
-            u.display_name, u.avatar_url, COALESCE(pm.role, 'RUNNER') as role
+            u.display_name, u.avatar_url, COALESCE(pm.role, gp.role, 'RUNNER') as role
      FROM party_chat_messages cm
      JOIN users u ON u.id = cm.sender_user_id
      LEFT JOIN party_members pm ON pm.party_id = cm.party_id AND pm.user_id = cm.sender_user_id
-     WHERE cm.party_id = $1
+     LEFT JOIN game_players gp ON gp.game_id = cm.match_id AND gp.user_id = cm.sender_user_id
+     WHERE cm.party_id = $1 OR cm.match_id = $2 OR cm.party_id = $2
      ORDER BY cm.created_at ASC
-     LIMIT $2`,
-    [partyId, limit]
+     LIMIT $3`,
+    [resolvedId, partyId, limit]
   );
 
   return rows.map((r) => ({
     id: r.id,
-    partyId: r.party_id,
+    partyId: partyId,
     matchId: r.match_id,
     senderUserId: r.sender_user_id,
     senderDisplayName: r.display_name,
@@ -690,6 +747,9 @@ export async function postAnnouncement(
   metadata: Record<string, any> = {},
   matchId?: string
 ): Promise<PartyAnnouncement> {
+  const resolvedId = await resolvePartyId(partyId);
+  const effectiveMatchId = matchId || (partyId !== resolvedId ? partyId : null);
+
   const { rows } = await query<{
     id: string;
     party_id: string;
@@ -709,13 +769,13 @@ export async function postAnnouncement(
      SELECT i.*, u.display_name
      FROM inserted i
      LEFT JOIN users u ON u.id = i.sender_user_id`,
-    [partyId, matchId || null, senderUserId || null, type, message, JSON.stringify(metadata)]
+    [resolvedId, effectiveMatchId, senderUserId || null, type, message, JSON.stringify(metadata)]
   );
 
   const row = rows[0]!;
   const announcement: PartyAnnouncement = {
     id: row.id,
-    partyId: row.party_id,
+    partyId: partyId,
     matchId: row.match_id,
     senderUserId: row.sender_user_id,
     senderDisplayName: row.display_name,
@@ -725,11 +785,18 @@ export async function postAnnouncement(
     createdAt: row.created_at.toISOString(),
   };
 
-  emitToParty(partyId, SocketEvent.PARTY_ANNOUNCEMENT, announcement);
+  emitToParty(resolvedId, SocketEvent.PARTY_ANNOUNCEMENT, announcement);
+  if (partyId !== resolvedId) {
+    emitToParty(partyId, SocketEvent.PARTY_ANNOUNCEMENT, announcement);
+  }
+  if (effectiveMatchId) {
+    emitToGame(effectiveMatchId, SocketEvent.PARTY_ANNOUNCEMENT, announcement);
+  }
   return announcement;
 }
 
 export async function getAnnouncements(partyId: string, limit = 50): Promise<PartyAnnouncement[]> {
+  const resolvedId = await resolvePartyId(partyId);
   const { rows } = await query<{
     id: string;
     party_id: string;
@@ -744,15 +811,15 @@ export async function getAnnouncements(partyId: string, limit = 50): Promise<Par
     `SELECT pa.*, u.display_name
      FROM party_announcements pa
      LEFT JOIN users u ON u.id = pa.sender_user_id
-     WHERE pa.party_id = $1
+     WHERE pa.party_id = $1 OR pa.match_id = $2 OR pa.party_id = $2
      ORDER BY pa.created_at ASC
-     LIMIT $2`,
-    [partyId, limit]
+     LIMIT $3`,
+    [resolvedId, partyId, limit]
   );
 
   return rows.map((r) => ({
     id: r.id,
-    partyId: r.party_id,
+    partyId: partyId,
     matchId: r.match_id,
     senderUserId: r.sender_user_id,
     senderDisplayName: r.display_name,

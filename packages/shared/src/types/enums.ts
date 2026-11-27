@@ -2,14 +2,34 @@
 // All enumerations used across server and mobile
 
 export const GameStatus = {
+  WAITING: 'WAITING',
   LOBBY: 'LOBBY',
+  PLANNING: 'PLANNING',
+  COUNTDOWN: 'COUNTDOWN',
   STARTING: 'STARTING',
   ACTIVE: 'ACTIVE',
   PAUSED: 'PAUSED',
   FINISHED: 'FINISHED',
   CANCELLED: 'CANCELLED',
+  RECOVERING: 'RECOVERING',
 } as const;
 export type GameStatus = (typeof GameStatus)[keyof typeof GameStatus];
+
+export const LocationRefreshTier = {
+  EASY: 3,
+  NORMAL: 10,
+  HARD: 20,
+  EXTREME: 30,
+} as const;
+export type LocationRefreshTier = (typeof LocationRefreshTier)[keyof typeof LocationRefreshTier];
+
+export const LocationFreshness = {
+  LIVE: 'LIVE',
+  UPDATING: 'UPDATING',
+  STALE: 'STALE',
+  OFFLINE: 'OFFLINE',
+} as const;
+export type LocationFreshness = (typeof LocationFreshness)[keyof typeof LocationFreshness];
 
 export const PartyStatus = {
   OPEN: 'OPEN',
@@ -76,9 +96,13 @@ export const DangerBand = {
   UNKNOWN: 'UNKNOWN',
   SAFE: 'SAFE',
   LOW: 'LOW',
+  ELEVATED: 'ELEVATED',
   MEDIUM: 'MEDIUM',
+  WARNING: 'WARNING',
   HIGH: 'HIGH',
+  DANGER: 'DANGER',
   CRITICAL: 'CRITICAL',
+  CAUGHT: 'CAUGHT',
 } as const;
 export type DangerBand = (typeof DangerBand)[keyof typeof DangerBand];
 

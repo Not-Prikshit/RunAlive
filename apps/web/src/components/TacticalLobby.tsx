@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../lib/api';
 import { connectSocket } from '../lib/socket';
+import { colyseus } from '../lib/colyseus';
 import {
   Users,
   Shield,
@@ -67,6 +68,9 @@ export const TacticalLobby: React.FC<TacticalLobbyProps> = React.memo(({
   const [draggedOperatorId, setDraggedOperatorId] = useState<string | null>(null);
   const [dragOverZone, setDragOverZone] = useState<'RUNNER' | 'SEEKER' | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [locationRefreshTier, setLocationRefreshTier] = useState<'EASY' | 'NORMAL' | 'HARD' | 'EXTREME' | 'CUSTOM'>('NORMAL');
+  const [locationRefreshIntervalSec, setLocationRefreshIntervalSec] = useState<number>(10);
+  const [colyseusRoom, setColyseusRoom] = useState<any>(null);
 
   const effectivePartyId = partyId || party?.id || gameId || '';
   const isHost = party ? party.leaderUserId === currentUserId : initialIsHost;
@@ -150,6 +154,45 @@ export const TacticalLobby: React.FC<TacticalLobbyProps> = React.memo(({
     };
   }, [partyId, gameId, effectivePartyId, onStartMatch]);
 
+  // Connect to authoritative Colyseus multiplayer game room
+  useEffect(() => {
+    let mounted = true;
+    const sessionId = effectivePartyId || gameId;
+    if (!sessionId) return;
+
+    colyseus
+      .joinOrCreateGameRoom({
+        sessionId,
+        joinCode: roomCode !== '------' ? roomCode : undefined,
+        isHost,
+        locationRefreshIntervalSec,
+      })
+      .then((room) => {
+        if (!mounted) return;
+        setColyseusRoom(room);
+
+        room.onStateChange((state: any) => {
+          if (!mounted) return;
+          if (state.locationRefreshIntervalSec) {
+            setLocationRefreshIntervalSec(state.locationRefreshIntervalSec);
+          }
+          if (state.locationRefreshTier) {
+            setLocationRefreshTier(state.locationRefreshTier);
+          }
+          if (state.status === 'ACTIVE' || state.status === 'COUNTDOWN') {
+            onStartMatch(state.sessionId || sessionId);
+          }
+        });
+      })
+      .catch((err) => {
+        console.warn('Colyseus lobby room connect notice:', err);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [effectivePartyId, gameId, isHost]);
+
   const members: PartyMemberSummary[] = party?.members || [];
   const hiders = members.filter((m) => m.role === PlayerRole.RUNNER);
   const seekers = members.filter((m) => m.role === PlayerRole.SEEKER || m.role === PlayerRole.HOST);
@@ -190,6 +233,9 @@ export const TacticalLobby: React.FC<TacticalLobbyProps> = React.memo(({
     }
 
     try {
+      if (colyseusRoom) {
+        colyseusRoom.send('host:set_player_role', { targetUserId, role: targetRole });
+      }
       if (partyId) {
         const res = await api.patch<{ party: PartySummary }>(
           `/parties/${partyId}/members/${targetUserId}`,
@@ -218,6 +264,9 @@ export const TacticalLobby: React.FC<TacticalLobbyProps> = React.memo(({
   const handleToggleReady = async () => {
     const nextReady = !isReady;
     try {
+      if (colyseusRoom) {
+        colyseusRoom.send('player:ready', { ready: nextReady });
+      }
       if (partyId) {
         const res = await api.post<{ party: PartySummary }>(`/parties/${partyId}/ready`, {
           isReady: nextReady,
@@ -298,6 +347,9 @@ export const TacticalLobby: React.FC<TacticalLobbyProps> = React.memo(({
     setLoading(true);
     setError(null);
     try {
+      if (colyseusRoom) {
+        colyseusRoom.send('host:start_match');
+      }
       if (partyId) {
         const res = await api.post<{ match: { matchId: string; roomCode: string } }>(
           `/parties/${partyId}/start-match`,
@@ -469,6 +521,91 @@ export const TacticalLobby: React.FC<TacticalLobbyProps> = React.memo(({
           </div>
         </div>
       )}
+
+      {/* LIVE LOCATION INTELLIGENCE (HOST-CONTROLLED LOCATION REFRESH SYSTEM) */}
+      <div className="comic-card bg-white dark:bg-[#1E293B] border-2 border-[#0F172A] dark:border-[#475569] p-4 rounded-xl shadow-[3px_3px_0px_#0F172A] dark:shadow-[3px_3px_0px_#020617]">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <div className="flex items-center space-x-2">
+            <Radio className="w-4 h-4 text-[#2563EB] animate-pulse" />
+            <h3 className="text-sm font-heading font-black text-[#0F172A] dark:text-white uppercase tracking-wider">
+              Live Location Intelligence
+            </h3>
+          </div>
+          <div className="text-xs font-mono font-bold px-2.5 py-1 bg-[#EFF6FF] dark:bg-[#1E3A8A] text-[#2563EB] dark:text-[#93C5FD] rounded-lg border border-[#2563EB]/40 flex items-center space-x-1.5">
+            <span>BROADCAST REFRESH:</span>
+            <span className="text-[#2563EB] dark:text-white underline">{locationRefreshIntervalSec}s</span>
+            <span>({locationRefreshTier})</span>
+          </div>
+        </div>
+        <p className="text-xs text-[#64748B] dark:text-[#94A3B8] mb-3">
+          Control how frequently players' geographical positions are revealed to other participants. Longer intervals create greater uncertainty and make the game harder.
+        </p>
+
+        {/* Selectable difficulty cards */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+          {[
+            { tier: 'EASY', label: 'Easy', sec: 3, desc: 'Frequent updates (3s)' },
+            { tier: 'NORMAL', label: 'Normal', sec: 10, desc: 'Balanced gameplay (10s)' },
+            { tier: 'HARD', label: 'Hard', sec: 20, desc: 'Uncertain positions (20s)' },
+            { tier: 'EXTREME', label: 'Extreme', sec: 30, desc: 'Stealth combat (30s)' },
+            { tier: 'CUSTOM', label: 'Custom', sec: locationRefreshIntervalSec, desc: '3–60s slider' },
+          ].map((item) => (
+            <button
+              key={item.tier}
+              type="button"
+              disabled={!isHost}
+              onClick={() => {
+                if (!isHost) return;
+                setLocationRefreshTier(item.tier as any);
+                if (item.tier !== 'CUSTOM') {
+                  setLocationRefreshIntervalSec(item.sec);
+                  if (colyseusRoom) {
+                    colyseusRoom.send('host:update_settings', { locationRefreshIntervalSec: item.sec });
+                  }
+                }
+              }}
+              className={`p-2.5 rounded-xl border-2 text-left transition cursor-pointer flex flex-col justify-between ${
+                locationRefreshTier === item.tier
+                  ? 'border-[#2563EB] bg-[#EFF6FF] dark:bg-[#1E3A8A]/40 shadow-[2px_2px_0px_#2563EB]'
+                  : 'border-[#CBD5E1] dark:border-[#475569] bg-[#FAF8F5] dark:bg-[#0F172A] opacity-80 hover:opacity-100'
+              } ${!isHost ? 'cursor-not-allowed opacity-60' : ''}`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-heading font-black text-[#0F172A] dark:text-white">{item.label}</span>
+                <span className="text-[11px] font-mono font-bold text-[#2563EB] dark:text-[#93C5FD]">
+                  {item.tier === 'CUSTOM' ? `${locationRefreshIntervalSec}s` : `${item.sec}s`}
+                </span>
+              </div>
+              <span className="text-[10px] text-[#64748B] dark:text-[#94A3B8] mt-1">{item.desc}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Custom interval slider */}
+        {locationRefreshTier === 'CUSTOM' && (
+          <div className="mt-3 pt-3 border-t border-dashed border-[#CBD5E1] dark:border-[#475569] flex items-center space-x-3">
+            <span className="text-xs font-mono font-bold text-[#64748B] dark:text-[#94A3B8] whitespace-nowrap">
+              INTERVAL: {locationRefreshIntervalSec}s
+            </span>
+            <input
+              type="range"
+              min={3}
+              max={60}
+              step={1}
+              value={locationRefreshIntervalSec}
+              disabled={!isHost}
+              onChange={(e) => {
+                const val = Number(e.target.value);
+                setLocationRefreshIntervalSec(val);
+                if (colyseusRoom) {
+                  colyseusRoom.send('host:update_settings', { locationRefreshIntervalSec: val });
+                }
+              }}
+              className="w-full accent-[#2563EB] cursor-pointer"
+            />
+          </div>
+        )}
+      </div>
 
       {/* Main Grid: Teams & Live Communication Panel */}
       <div className="grid lg:grid-cols-3 gap-5">

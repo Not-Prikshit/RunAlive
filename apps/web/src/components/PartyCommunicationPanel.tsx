@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { api } from '../lib/api';
 import { connectSocket } from '../lib/socket';
+import { colyseus } from '../lib/colyseus';
 import {
   MessageSquare,
   Megaphone,
@@ -78,8 +79,20 @@ export const PartyCommunicationPanel: React.FC<PartyCommunicationPanelProps> = (
   useEffect(() => {
     const socket = connectSocket();
 
+    const joinRooms = () => {
+      socket.emit('party:join', { partyId });
+      socket.emit('game:join', { gameId: partyId });
+    };
+
+    joinRooms();
+    socket.on('connect', joinRooms);
+
     const handleNewMessage = (msg: PartyChatMessage) => {
-      if (msg.partyId === partyId) {
+      if (
+        msg.partyId === partyId ||
+        (matchId && msg.matchId === matchId) ||
+        msg.matchId === partyId
+      ) {
         setMessages((prev) => {
           if (prev.some((m) => m.id === msg.id)) return prev;
           return [...prev, msg];
@@ -91,7 +104,11 @@ export const PartyCommunicationPanel: React.FC<PartyCommunicationPanelProps> = (
     };
 
     const handleNewAnnouncement = (ann: PartyAnnouncement) => {
-      if (ann.partyId === partyId) {
+      if (
+        ann.partyId === partyId ||
+        (matchId && ann.matchId === matchId) ||
+        ann.matchId === partyId
+      ) {
         setAnnouncements((prev) => {
           if (prev.some((a) => a.id === ann.id)) return prev;
           return [...prev, ann];
@@ -108,12 +125,13 @@ export const PartyCommunicationPanel: React.FC<PartyCommunicationPanelProps> = (
     socket.on('party:announcement', handleNewAnnouncement);
 
     return () => {
+      socket.off('connect', joinRooms);
       socket.off(SocketEvent.PARTY_CHAT_MESSAGE, handleNewMessage);
       socket.off('party:chat_message', handleNewMessage);
       socket.off(SocketEvent.PARTY_ANNOUNCEMENT, handleNewAnnouncement);
       socket.off('party:announcement', handleNewAnnouncement);
     };
-  }, [partyId, activeTab]);
+  }, [partyId, matchId, activeTab]);
 
   // Auto-scroll on new messages
   useEffect(() => {
@@ -136,10 +154,23 @@ export const PartyCommunicationPanel: React.FC<PartyCommunicationPanelProps> = (
     setIsSending(true);
     setChatInput('');
     try {
-      await api.post(`/parties/${partyId}/chat`, {
+      // 1. Authoritative Colyseus real-time broadcast
+      const room = colyseus.getCurrentRoom();
+      if (room) {
+        room.send('chat:send', { message: clean });
+      }
+
+      // 2. Persistent REST & Socket.IO sync
+      const res = await api.post<{ chat: PartyChatMessage }>(`/parties/${partyId}/chat`, {
         message: clean,
-        matchId,
+        matchId: matchId || partyId,
       });
+      if (res?.chat) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === res.chat.id)) return prev;
+          return [...prev, res.chat];
+        });
+      }
     } catch (err: any) {
       console.warn('Chat send error:', err);
     } finally {
@@ -155,11 +186,24 @@ export const PartyCommunicationPanel: React.FC<PartyCommunicationPanelProps> = (
     setIsSending(true);
     setAnnouncementInput('');
     try {
-      await api.post(`/parties/${partyId}/announcements`, {
+      // 1. Authoritative Colyseus host announcement broadcast
+      const room = colyseus.getCurrentRoom();
+      if (room) {
+        room.send('host:announcement', { title: 'COMMAND', body: clean });
+      }
+
+      // 2. Persistent REST & Socket.IO sync
+      const res = await api.post<{ announcement: PartyAnnouncement }>(`/parties/${partyId}/announcements`, {
         message: clean,
         type: 'HOST',
-        matchId,
+        matchId: matchId || partyId,
       });
+      if (res?.announcement) {
+        setAnnouncements((prev) => {
+          if (prev.some((a) => a.id === res.announcement.id)) return prev;
+          return [...prev, res.announcement];
+        });
+      }
     } catch (err: any) {
       console.warn('Announcement send error:', err);
     } finally {

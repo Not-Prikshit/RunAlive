@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: runalive
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: pnpm install && pnpm --filter @runalive/shared build && pnpm --filter @runalive/web build && pnpm --filter @runalive/server build
+    startCommand: node apps/server/dist/index.js
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: CORS_ORIGINS
+        value: https://runalive.onrender.com,http://localhost:5173,http://localhost:3000

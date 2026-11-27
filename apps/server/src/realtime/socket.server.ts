@@ -7,6 +7,8 @@ import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { verifyAccessToken } from '../modules/auth/auth.service.js';
 import { query } from '../db/pool.js';
+import { evaluateRunnerDanger } from '../modules/danger/danger.service.js';
+import { resolvePartyId } from '../modules/parties/parties.service.js';
 
 export interface AuthenticatedSocket extends Socket {
   userId: string;
@@ -107,9 +109,13 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
         const partyId = payload?.partyId;
         if (!partyId) return;
         void socket.join(`party:${partyId}`);
+        const actualPartyId = await resolvePartyId(partyId);
+        if (actualPartyId !== partyId) {
+          void socket.join(`party:${actualPartyId}`);
+        }
         await query(
           `UPDATE party_members SET is_connected = true WHERE user_id = $1 AND party_id = $2`,
-          [s.userId, partyId]
+          [s.userId, actualPartyId]
         );
         typeof ack === 'function' && ack({ ok: true });
       } catch (err) {
@@ -123,6 +129,10 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
       try {
         if (payload?.partyId) {
           void socket.leave(`party:${payload.partyId}`);
+          const actualPartyId = await resolvePartyId(payload.partyId);
+          if (actualPartyId !== payload.partyId) {
+            void socket.leave(`party:${actualPartyId}`);
+          }
         }
       } catch {}
     });
@@ -133,12 +143,20 @@ export function createSocketServer(httpServer: HttpServer): SocketServer {
         const gameId = payload?.gameId;
         if (!gameId) return;
         void socket.join(`game:${gameId}`);
+        void socket.join(`party:${gameId}`);
+        const actualPartyId = await resolvePartyId(gameId);
+        if (actualPartyId !== gameId) {
+          void socket.join(`party:${actualPartyId}`);
+        }
 
         const { rows } = await query<{ role: string }>(
           `SELECT role FROM game_players WHERE user_id = $1 AND game_id = $2`,
           [s.userId, gameId]
         );
-        if (rows[0]?.role === 'RUNNER') void socket.join(`game:${gameId}:runners`);
+        if (rows[0]?.role === 'RUNNER') {
+          void socket.join(`game:${gameId}:runners`);
+          void evaluateRunnerDanger(gameId, s.userId).catch(() => {});
+        }
         if (rows[0]?.role === 'SEEKER') void socket.join(`game:${gameId}:seekers`);
 
         await query(

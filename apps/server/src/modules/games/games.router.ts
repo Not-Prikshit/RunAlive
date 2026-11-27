@@ -19,6 +19,7 @@ import * as engineService from './engine.service.js';
 import * as locationsService from '../locations/locations.service.js';
 import * as boundaryService from '../boundary/boundary.service.js';
 import * as catchesService from '../catches/catches.service.js';
+import * as dangerService from '../danger/danger.service.js';
 import { config } from '../../config.js';
 
 export const gamesRouter = Router();
@@ -597,6 +598,18 @@ const notImplemented = (_req: Request, res: Response) => {
 
 gamesRouter.patch('/:id/config', notImplemented);
 gamesRouter.put('/:id/rounds', notImplemented);
+/**
+ * GET /api/v1/games/:id/danger
+ * Get current danger state for runner
+ */
+gamesRouter.get(
+  '/:id/danger',
+  asyncHandler(async (req: Request, res: Response) => {
+    const danger = await dangerService.evaluateRunnerDanger(param(req, 'id'), req.user!.id);
+    res.status(200).json({ danger });
+  })
+);
+
 /**
  * POST /api/v1/games/:id/location
  * Ingest location fix batch from active player

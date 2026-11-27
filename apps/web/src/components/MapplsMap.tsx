@@ -38,6 +38,7 @@ export interface MapMarker {
   isCurrentUser?: boolean;
   lastSeenAt?: string | null;
   accuracyMeters?: number;
+  freshness?: 'LIVE' | 'UPDATING' | 'STALE' | 'OFFLINE';
 }
 
 export type PerimeterShape = 'CIRCLE' | 'RECTANGLE' | 'POLYGON';
@@ -142,10 +143,24 @@ function buildMarkerDivIcon(
   color: string,
   label: string,
   isMe: boolean,
-  isStale: boolean
+  isStale: boolean,
+  freshness?: 'LIVE' | 'UPDATING' | 'STALE' | 'OFFLINE'
 ): L.DivIcon {
+  const freshColor =
+    freshness === 'LIVE'
+      ? '#22C55E'
+      : freshness === 'UPDATING'
+      ? '#06B6D4'
+      : freshness === 'STALE' || isStale
+      ? '#F59E0B'
+      : freshness === 'OFFLINE'
+      ? '#EF4444'
+      : '#22C55E';
+
+  const isOffline = freshness === 'OFFLINE';
+
   const markerHtml = `
-    <div style="position: relative; display: flex; flex-direction: column; align-items: center; opacity: ${isStale ? 0.6 : 1}; transform: translate3d(0,0,0);">
+    <div style="position: relative; display: flex; flex-direction: column; align-items: center; opacity: ${isOffline ? 0.45 : isStale ? 0.7 : 1}; transform: translate3d(0,0,0);">
       ${
         isMe
           ? `<div style="position: absolute; top: -6px; left: -6px; width: 30px; height: 30px; border-radius: 50%; border: 2.5px solid ${color}; opacity: 0.7; animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></div>`
@@ -154,8 +169,10 @@ function buildMarkerDivIcon(
       <div style="width: 18px; height: 18px; border-radius: 50%; background: ${color}; border: 2.5px solid #18181B; box-shadow: 2px 2px 0px #18181B; display: flex; align-items: center; justify-content: center; color: white; font-size: 9px; font-weight: 900;">
         ${label.charAt(0)}
       </div>
-      <div style="margin-top: 3px; padding: 2px 6px; background: #FFFFFF; border: 1.5px solid #18181B; border-radius: 6px; color: #18181B; font-family: monospace; font-size: 10px; font-weight: 900; white-space: nowrap; box-shadow: 1.5px 1.5px 0px #18181B;">
-        ${label} ${isStale ? '⚠️' : ''}
+      <div style="margin-top: 3px; padding: 2px 6px; background: #FFFFFF; border: 1.5px solid #18181B; border-radius: 6px; color: #18181B; font-family: monospace; font-size: 10px; font-weight: 900; white-space: nowrap; box-shadow: 1.5px 1.5px 0px #18181B; display: flex; align-items: center; gap: 4px;">
+        <span>${label}</span>
+        <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: ${freshColor};"></span>
+        ${isOffline ? '<span style="font-size: 8px; color: #EF4444;">OFF</span>' : ''}
       </div>
     </div>
   `;
@@ -163,8 +180,8 @@ function buildMarkerDivIcon(
   return L.divIcon({
     className: 'custom-tactical-marker',
     html: markerHtml,
-    iconSize: [70, 42],
-    iconAnchor: [35, 9],
+    iconSize: [80, 42],
+    iconAnchor: [40, 9],
   });
 }
 
@@ -1019,7 +1036,7 @@ export const MapplsMap: React.FC<MapplsMapProps> = React.memo(({
         Date.now() - new Date(m.lastSeenAt).getTime() > 45_000;
 
       if (!existing) {
-        const icon = buildMarkerDivIcon(color, label, isMe, isStale);
+        const icon = buildMarkerDivIcon(color, label, isMe, isStale, m.freshness);
         const marker = L.marker([m.lat, m.lng], { icon });
         playersGroup.addLayer(marker);
 
@@ -1031,12 +1048,12 @@ export const MapplsMap: React.FC<MapplsMapProps> = React.memo(({
           isStale,
         });
       } else {
-        // If role or label changed, update icon
+        // If role, label, or freshness changed, update icon
         if (existing.role !== m.role || existing.label !== label || existing.isStale !== isStale) {
           existing.role = m.role || 'RUNNER';
           existing.label = label;
           existing.isStale = isStale;
-          existing.marker.setIcon(buildMarkerDivIcon(color, label, isMe, isStale));
+          existing.marker.setIcon(buildMarkerDivIcon(color, label, isMe, isStale, m.freshness));
         }
       }
     });

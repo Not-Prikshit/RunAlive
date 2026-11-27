@@ -11,7 +11,9 @@
     "declarationMap": false,
     "paths": {
       "@runalive/shared": ["../../packages/shared/dist/index.d.ts"]
-    }
+    },
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false
   },
   "include": ["src"],
   "exclude": ["node_modules", "dist"]

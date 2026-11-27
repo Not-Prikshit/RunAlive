@@ -11,16 +11,19 @@ const BACKGROUND_LOCATION_TASK = 'RUNALIVE_BACKGROUND_LOCATION';
 let activeGameId: string | null = null;
 let locationBuffer: LocationFix[] = [];
 let lastFlushTime = 0;
-const MIN_FLUSH_INTERVAL_MS = 3000; // Rate limit: flush at most every 3 seconds
+const MIN_FLUSH_INTERVAL_MS = 2000; // Rate limit: flush at most every 2 seconds
+let foregroundSubscription: Location.LocationSubscription | null = null;
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let lastKnownFix: LocationFix | null = null;
 
 /**
  * Flush accumulated location buffer to backend API.
  */
-export async function flushLocationBuffer(): Promise<void> {
+export async function flushLocationBuffer(force = false): Promise<void> {
   if (!activeGameId || locationBuffer.length === 0) return;
 
   const now = Date.now();
-  if (now - lastFlushTime < MIN_FLUSH_INTERVAL_MS) return;
+  if (!force && now - lastFlushTime < MIN_FLUSH_INTERVAL_MS) return;
 
   const fixesToSend = [...locationBuffer.slice(-5)]; // Max 5 fixes per batch
   locationBuffer = [];
@@ -42,14 +45,13 @@ function handleLocationFix(loc: Location.LocationObject): void {
     lat: loc.coords.latitude,
     lon: loc.coords.longitude,
     accuracyM: loc.coords.accuracy ?? 20,
-    clientTs: loc.timestamp,
+    clientTs: loc.timestamp || Date.now(),
     mocked: (loc as any).mocked ?? false,
   };
 
+  lastKnownFix = fix;
   locationBuffer.push(fix);
-  if (locationBuffer.length >= 3) {
-    void flushLocationBuffer();
-  }
+  void flushLocationBuffer();
 }
 
 // ── Background Task Definition ───────────────────────────────────────────────
@@ -61,12 +63,10 @@ if (!TaskManager.isTaskDefined(BACKGROUND_LOCATION_TASK)) {
       for (const loc of locations) {
         handleLocationFix(loc);
       }
-      await flushLocationBuffer();
+      await flushLocationBuffer(true);
     }
   });
 }
-
-let foregroundSubscription: Location.LocationSubscription | null = null;
 
 /**
  * Start active match tracking (foreground + background).
@@ -79,6 +79,17 @@ export async function startTracking(gameId: string): Promise<boolean> {
     return false;
   }
 
+  // Obtain initial fix immediately so backend has player position right away
+  try {
+    const initialLoc = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.High,
+    });
+    handleLocationFix(initialLoc);
+    await flushLocationBuffer(true);
+  } catch {
+    // Initial lock failed, watcher will acquire next
+  }
+
   // Request background permission
   try {
     const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
@@ -87,8 +98,8 @@ export async function startTracking(gameId: string): Promise<boolean> {
       if (!hasStarted) {
         await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
           accuracy: Location.Accuracy.High,
-          distanceInterval: 5, // Every 5 meters
-          timeInterval: 3000, // Or every 3 seconds
+          distanceInterval: 0, // Ensure continuous updates even if stationary
+          timeInterval: 2000,
           showsBackgroundLocationIndicator: true,
           foregroundService: {
             notificationTitle: 'RUN ALIVE Match Active',
@@ -107,13 +118,33 @@ export async function startTracking(gameId: string): Promise<boolean> {
     foregroundSubscription = await Location.watchPositionAsync(
       {
         accuracy: Location.Accuracy.BestForNavigation,
-        distanceInterval: 3,
+        distanceInterval: 0, // Continuous GPS ticks even for stationary hiders
         timeInterval: 2000,
       },
       (loc) => {
         handleLocationFix(loc);
       }
     );
+  }
+
+  // Periodic heartbeat timer (every 3s):
+  // 1) Flushes any buffered fixes
+  // 2) If player has been stationary for > 15s, re-sends last known position so server 60s freshness never expires
+  if (!heartbeatTimer) {
+    heartbeatTimer = setInterval(() => {
+      if (!activeGameId) return;
+      if (locationBuffer.length > 0) {
+        void flushLocationBuffer();
+      } else if (lastKnownFix && Date.now() - lastFlushTime >= 15000) {
+        // Keep stationary hiders fresh in backend
+        const keepaliveFix: LocationFix = {
+          ...lastKnownFix,
+          clientTs: Date.now(),
+        };
+        locationBuffer.push(keepaliveFix);
+        void flushLocationBuffer(true);
+      }
+    }, 3000);
   }
 
   return true;
@@ -125,6 +156,12 @@ export async function startTracking(gameId: string): Promise<boolean> {
 export async function stopTracking(): Promise<void> {
   activeGameId = null;
   locationBuffer = [];
+  lastKnownFix = null;
+
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
 
   if (foregroundSubscription) {
     foregroundSubscription.remove();

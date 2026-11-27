@@ -15,6 +15,7 @@ import {
 import { useLocalSearchParams, router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '@/components/Button';
+import { ChatModal } from '@/components/ChatModal';
 import { COLORS, SPACING, RADIUS } from '@/design/tokens';
 import { api, ApiError } from '@/lib/api';
 import { connectSocket } from '@/lib/socket';
@@ -45,6 +46,7 @@ export default function LobbyScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [chatModalVisible, setChatModalVisible] = useState(false);
 
   const isHost = game?.hostUserId === currentUser?.id;
   const myPlayer = game?.players.find((p) => p.userId === currentUser?.id);
@@ -79,8 +81,8 @@ export default function LobbyScreen() {
 
     socket.on(SocketEvent.GAME_STARTED, () => {
       router.replace({
-        pathname: '/(app)/home',
-        params: { activeGameId: gameId },
+        pathname: '/(app)/game',
+        params: { gameId },
       });
     });
 
@@ -214,15 +216,24 @@ export default function LobbyScreen() {
           <Text style={styles.sectionTitle}>
             PLAYERS ({game.players.length} / {game.maxPlayers})
           </Text>
-          {isHost ? (
+          <View style={{ flexDirection: 'row', gap: SPACING.sm, alignItems: 'center' }}>
             <TouchableOpacity
-              onPress={() => void handleRandomizeTeams()}
-              disabled={actionLoading}
-              style={styles.shuffleBtn}
+              onPress={() => setChatModalVisible(true)}
+              style={styles.chatBtn}
+              activeOpacity={0.7}
             >
-              <Text style={styles.shuffleBtnText}>🎲 Shuffle Teams</Text>
+              <Text style={styles.chatBtnText}>💬 Chat</Text>
             </TouchableOpacity>
-          ) : null}
+            {isHost ? (
+              <TouchableOpacity
+                onPress={() => void handleRandomizeTeams()}
+                disabled={actionLoading}
+                style={styles.shuffleBtn}
+              >
+                <Text style={styles.shuffleBtnText}>🎲 Shuffle</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </View>
 
         {/* Player Roster */}
@@ -343,6 +354,16 @@ export default function LobbyScreen() {
           />
         </View>
       </ScrollView>
+
+      {/* Squad Chat Modal */}
+      {game && (
+        <ChatModal
+          visible={chatModalVisible}
+          onClose={() => setChatModalVisible(false)}
+          gameId={game.id}
+          currentUserId={currentUser?.id}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -412,6 +433,19 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     letterSpacing: 1,
+  },
+  chatBtn: {
+    backgroundColor: 'rgba(255, 221, 0, 0.15)',
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: RADIUS.sm,
+  },
+  chatBtnText: {
+    color: COLORS.accent,
+    fontSize: 12,
+    fontWeight: '800',
   },
   shuffleBtn: {
     backgroundColor: COLORS.surface,

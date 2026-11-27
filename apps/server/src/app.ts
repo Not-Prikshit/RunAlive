@@ -14,6 +14,7 @@ import { rateLimit } from 'express-rate-limit';
 import { config } from './config.js';
 import { logger } from './logger.js';
 import { pool } from './db/pool.js';
+import { createNodeMatchmakingMiddleware } from '@colyseus/core';
 
 // ─── Route imports (added progressively per stage) ───────────────────────────
 import { healthRouter } from './modules/health/health.router.js';
@@ -75,6 +76,9 @@ export function createApp() {
       methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     })
   );
+
+  // ── Colyseus Matchmaker API Middleware ──────────────────────────────────
+  app.use(createNodeMatchmakingMiddleware());
 
   // ── Body parsing ─────────────────────────────────────────────────────────
   app.use(express.json({ limit: '100kb' }));
